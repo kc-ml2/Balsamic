@@ -33,6 +33,7 @@ grating-implementations = "dqn_meent.implementations.api:main"
 optimization-lab = "optimization_framework.api.app:main"
 optimization-implementations = "optimization_framework.implementations.api:main"
 optimization-research = "optimization_framework.cli:main"
+optimization-report = "optimization_framework.reports.cli:main"
 
 [project.entry-points."optimization_framework.problems"]
 meent_grating = "dqn_meent.problem:MeentProblem"

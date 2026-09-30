@@ -48,7 +48,7 @@ KNOWN_ROLES = ("campaign_manager", "problem_analyst", "skeptical_domain_analyst"
     "literature_investigator", "methodology_specialist", "cross_domain_methodology_specialist",
     "combinatorial_generator", "statistical_generator", "evolution_specialist", "proposal_reviewer",
     "independent_critic", "assumption_reviewer", "comparative_reviewer", "diversity_curator",
-    "experiment_designer", "implementation_test_designer", "implementation_builder", "implementation_validator")
+    "experiment_designer", "implementation_test_designer", "implementation_builder", "implementation_validator", "technical_report_writer")
 
 
 def matched_role(policy, role):
