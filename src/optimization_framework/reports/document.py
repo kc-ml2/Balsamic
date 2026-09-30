@@ -109,7 +109,7 @@ def compact_figures(source):
 
 class WriterHTML(HTMLParser):
     """The model writes inert document markup, never executable HTML or CSS."""
-    allowed = {"section", "h1", "h2", "h3", "h4", "p", "b", "strong", "i", "em", "sub", "sup", "code", "pre",
+    allowed = {"article", "section", "h1", "h2", "h3", "h4", "p", "b", "strong", "i", "em", "sub", "sup", "code", "pre",
                "ul", "ol", "li", "table", "thead", "tbody", "tr", "td", "th", "blockquote", "div", "span",
                "figure", "figcaption", "a", "br", "hr"}
 

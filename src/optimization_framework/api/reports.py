@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse, Response
 from optimization_framework.reports.document import clean_source, review_html
 from optimization_framework.reports.service import Feedback, Reports
 from optimization_framework.reports.writer import ReportWriter, WriterRequest
+from optimization_framework.reports.editorial import DraftRequest, FocusAnswer
 
 
 def install(app, workspace):
@@ -15,7 +16,12 @@ def install(app, workspace):
 
     @app.get("/api/reports")
     def listing(campaign_id: str | None = None):
-        return {"reports": reports.listing(campaign_id)}
+        return {"reports": reports.listing(campaign_id), "jobs": [public_job(job) for job in workspace.store.list("report_writer_job", campaign_id)]}
+
+    @app.post("/api/report-writer/jobs")
+    def write(request: DraftRequest):
+        return public_job(writer.start(campaign_id=request.campaign_id, brief=request.notes,
+            request_id=request.request_id, references=request.references, literature=request.literature, workflow=request.workflow))
 
     @app.get("/api/reports/{report_id}")
     def detail(report_id: str):
@@ -40,6 +46,25 @@ def install(app, workspace):
     def job(job_id: str):
         return public_job(workspace.store.get(job_id, "report_writer_job"))
 
+    @app.post("/api/report-writer/jobs/{job_id}/answer")
+    def answer(job_id: str, request: FocusAnswer):
+        return public_job(writer.answer(job_id, request.answer))
+
+    @app.post("/api/report-writer/jobs/{job_id}/cancel")
+    def cancel(job_id: str):
+        return public_job(writer.cancel(job_id))
+
+    @app.get("/api/report-writer/jobs/{job_id}/artifacts")
+    def artifacts(job_id: str):
+        job = workspace.store.get(job_id, "report_writer_job")
+        packet = {"job": public_job(job), "researcher_input": job["input"],
+            "figures": job["figures"],
+            "stages": [workspace.store.get(key, "report_writer_stage") for key in job.get("stage_ids", [])],
+            "reads": [workspace.store.get(key, "report_evidence_receipt") for key in job.get("receipt_ids", [])],
+            "snapshot": workspace.store.get(job["snapshot_id"], "report_evidence_snapshot") if job.get("snapshot_id") else None}
+        return Response(json.dumps(packet, ensure_ascii=False, indent=2), media_type="application/json",
+            headers={"Content-Disposition": f'attachment; filename="{job_id}-writing-record.json"'})
+
     @app.get("/api/reports/{report_id}/export")
     def export(report_id: str, format: Literal["html", "review"] = "html"):
         report = reports.get(report_id)
@@ -54,4 +79,5 @@ def install(app, workspace):
 
 
 def public_job(job):
-    return {key: value for key, value in job.items() if key not in {"input", "figures", "provider_snapshot"}}
+    return {key: value for key, value in job.items() if key not in {"input", "figures", "provider_snapshot"}} | {
+        "notes": job["input"].get("instruction", ""), "artifacts_url": f"/api/report-writer/jobs/{job['id']}/artifacts"}

@@ -140,7 +140,7 @@ def test_writer_uses_review_priority_and_creates_linked_draft(tmp_path, monkeypa
                             change_summary="Improved structure.", feedback_response={"m1": "Retained the phrase."})
     monkeypatch.setattr("optimization_framework.reports.writer.LLMAdapter.call_with_prompt", respond)
     writer = app.state.report_writer
-    request = WriterRequest(submission_id="review_a", request_id="once")
+    request = WriterRequest(submission_id="review_a", request_id="once", workflow="legacy")
     result = writer.start(report_id=report["id"], request=request, background=False)
     assert result["status"] == "completed"
     draft = reports.get(result["result_id"])
@@ -164,7 +164,7 @@ def test_writer_rejects_broken_handoffs_without_touching_original(tmp_path, monk
     fake_provider(monkeypatch)
     monkeypatch.setattr("optimization_framework.reports.writer.LLMAdapter.call_with_prompt", lambda *args, **kwargs:
         WriterResult(title="Broken", body_html='<section id="one">' + body + '</section>', change_summary="Changed", feedback_response=responses))
-    result = app.state.report_writer.start(report_id=report["id"], request=WriterRequest(submission_id="review_a", request_id="failed"), background=False)
+    result = app.state.report_writer.start(report_id=report["id"], request=WriterRequest(submission_id="review_a", request_id="failed", workflow="legacy"), background=False)
     assert result["status"] == "failed" and error in result["error"]
     assert len(app.state.reports.listing()) == 1
     assert app.state.reports.get(report["id"])["html"] == SOURCE
@@ -176,7 +176,7 @@ def test_new_report_agent_and_restart_do_not_replay_calls(tmp_path, monkeypatch)
     monkeypatch.setattr("optimization_framework.reports.writer.LLMAdapter.call_with_prompt", lambda *args, **kwargs:
         WriterResult(title="New report", body_html='<section id="summary"><h2>Findings</h2><p>Three seeds were tested.<br/>Further tests are needed.</p></section>', change_summary="Drafted from supplied evidence."))
     writer = app.state.report_writer
-    job = writer.start(evidence={"seed_count": 3}, brief="Write a technical report.", background=False)
+    job = writer.start(evidence={"seed_count": 3}, brief="Write a technical report.", background=False, workflow="legacy")
     assert job["status"] == "completed" and app.state.reports.get(job["result_id"])["parent_id"] is None
     interrupted = deepcopy(job) | {"id": "interrupted_report", "status": "running"}
     app.state.workspace.store.put("report_writer_job", interrupted)

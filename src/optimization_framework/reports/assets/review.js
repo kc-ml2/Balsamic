@@ -13,7 +13,7 @@
   const uid = () => 'mark_' + Array.from(crypto.getRandomValues(new Uint8Array(12)), n => n.toString(16).padStart(2, '0')).join('');
   const fields = ['id', 'section_id', 'start', 'end', 'exact', 'tier', 'note'];
   const cleanMark = mark => Object.fromEntries(fields.map(field => [field, mark[field] ?? (field === 'note' ? '' : undefined)]));
-  const fromFeedback = feedback => ({ annotations: (feedback?.annotations || []).map(cleanMark), comment: feedback?.comment || '', expected_submission_id: feedback?.submission_id || feedback?.expected_submission_id || null });
+  const fromFeedback = feedback => ({ annotations: (feedback?.annotations || []).map(cleanMark), comment: feedback?.comment || '', focus: feedback?.focus ?? config.revision?.editorial?.focus ?? '', expected_submission_id: feedback?.submission_id || feedback?.expected_submission_id || null });
   let state = fromFeedback(config.feedback);
   let submitted = config.feedback?.submission_id ? clone(state) : null;
   let lastSubmission = config.feedback?.submission_id || null;
@@ -32,7 +32,7 @@
     return result;
   }
   const texts = Object.fromEntries(sectionElements.map(section => [section.id, nodes(section).map(entry => entry.node.data).join('')]));
-  const fingerprint = value => JSON.stringify({ annotations: value.annotations.map(cleanMark).sort((a, b) => a.id.localeCompare(b.id)), comment: value.comment });
+  const fingerprint = value => JSON.stringify({ annotations: value.annotations.map(cleanMark).sort((a, b) => a.id.localeCompare(b.id)), comment: value.comment, focus: value.focus || '' });
   const dirty = () => !submitted || fingerprint(state) !== fingerprint(submitted);
 
   function alert(message) {
@@ -41,6 +41,7 @@
   }
   function validate(value) {
     if (!value || !Array.isArray(value.annotations) || value.annotations.length > 1000 || typeof value.comment !== 'string' || value.comment.length > 20000) throw Error('This is not a valid review.');
+    if (value.focus !== undefined && (typeof value.focus !== 'string' || value.focus.length > 4000)) throw Error('Writing focus must be at most 4000 characters.');
     const ids = new Set(), spans = {};
     for (const mark of value.annotations) {
       if (!/^[a-zA-Z0-9_-]{1,100}$/.test(mark.id) || ids.has(mark.id) || !Object.hasOwn(tierNames, mark.tier) || typeof mark.note !== 'string' || mark.note.length > 4000 || !Number.isInteger(mark.start) || !Number.isInteger(mark.end) || mark.start < 0 || mark.end <= mark.start || !Object.hasOwn(texts, mark.section_id) || texts[mark.section_id].slice(mark.start, mark.end) !== mark.exact || mark.end > texts[mark.section_id].length) throw Error('A highlight does not match this report. Nothing was imported.');
@@ -194,15 +195,17 @@
   $('review-undo').addEventListener('click', () => {
     if (!undo.length) return;
     const base = state.expected_submission_id; state = undo.pop(); state.expected_submission_id = base;
-    $('review-comment').value = state.comment; pending = []; active = null; save(); render(); selectionStatus();
+    $('review-comment').value = state.comment; $('review-focus').value = state.focus || ''; pending = []; active = null; save(); render(); selectionStatus();
   });
   $('review-comment').addEventListener('focus', checkpoint);
   $('review-comment').addEventListener('input', event => { state.comment = event.target.value; save(); });
+  $('review-focus').addEventListener('focus', checkpoint);
+  $('review-focus').addEventListener('input', event => { state.focus = event.target.value; save(); });
   $('review-toggle').addEventListener('click', () => { const hidden = document.body.classList.toggle('review-sidebar-hidden'); $('review-toggle').setAttribute('aria-expanded', String(!hidden)); });
   const resize = new ResizeObserver(() => document.documentElement.style.setProperty('--review-header', $('review-header').offsetHeight + 'px'));
   resize.observe($('review-header'));
 
-  function feedback() { return { schema_version: 1, report_id: config.id, source_hash: config.source_hash, submission_id: uid(), expected_submission_id: state.expected_submission_id, annotations: clone(state.annotations), comment: state.comment }; }
+  function feedback() { return { schema_version: 1, report_id: config.id, source_hash: config.source_hash, submission_id: uid(), expected_submission_id: state.expected_submission_id, annotations: clone(state.annotations), comment: state.comment, focus: state.focus || '' }; }
   function download(text, filename, type) {
     const url = URL.createObjectURL(new Blob([text], { type })); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 10000);
   }
@@ -264,8 +267,8 @@
         packet = data.feedback; if (!packet) throw Error('This HTML file has no feedback.');
       } else { const data = JSON.parse(raw); packet = data.feedback || data; }
       if (packet.report_id !== config.id || packet.source_hash !== config.source_hash) throw Error('This review belongs to another report version. Open that draft before importing it.');
-      const next = { annotations: packet.annotations.map(cleanMark), comment: packet.comment || '', expected_submission_id: state.expected_submission_id };
-      validate(next); checkpoint(); state = next; active = null; pending = []; $('review-comment').value = state.comment;
+      const next = { annotations: packet.annotations.map(cleanMark), comment: packet.comment || '', focus: packet.focus || '', expected_submission_id: state.expected_submission_id };
+      validate(next); checkpoint(); state = next; active = null; pending = []; $('review-comment').value = state.comment; $('review-focus').value = state.focus;
       save(); render(); alert('Imported review loaded. Submit feedback to save it for the writer. Undo restores your previous draft.');
     } catch (error) { alert(error.message || 'The review could not be imported.'); }
     finally { event.target.value = ''; }
@@ -287,7 +290,7 @@
       try {
         const data = await request(`/api/reports/${config.id}`); if (!data.feedback) return;
         checkpoint(); state = fromFeedback(data.feedback); submitted = clone(state); lastSubmission = data.feedback.submission_id;
-        $('review-comment').value = state.comment; save(); render(); receipt();
+        $('review-comment').value = state.comment; $('review-focus').value = state.focus; save(); render(); receipt();
       } catch (error) { alert(error.message); }
     }));
   }
@@ -306,10 +309,13 @@
   async function watchJob(id) {
     try {
       const job = await request(`/api/report-writer/jobs/${id}`);
-      if (job.status === 'running') { $('review-writer-status').textContent = 'Writer is revising a new draft… You can leave this page and return later.'; writerTimer = setTimeout(() => watchJob(id), 3000); return; }
+      if (job.status === 'running') { $('review-writer-status').textContent = `Writing stage: ${(job.stage || 'preparing').replaceAll('_', ' ')}. You can leave this page and return later.`; writerTimer = setTimeout(() => watchJob(id), 3000); return; }
       $('review-revise').disabled = dirty();
-      if (job.status === 'completed') {
-        const link = document.createElement('a'); link.href = '/reports/' + job.result_id; link.textContent = 'Open revised draft →'; $('review-writer-status').replaceChildren(link);
+      if (job.status === 'completed' || job.status === 'needs_attention') {
+        const link = document.createElement('a'); link.href = '/reports/' + job.result_id; link.textContent = job.status === 'needs_attention' ? 'Open draft with unresolved review issues →' : 'Open revised draft →'; $('review-writer-status').replaceChildren(link);
+      } else if (job.status === 'awaiting_focus') {
+        const link = document.createElement('a'); link.href = '/#reports'; link.textContent = 'Answer on the Reports page →';
+        $('review-writer-status').textContent = job.question + ' '; $('review-writer-status').append(link);
       } else $('review-writer-status').textContent = job.error || `Writer ${job.status}. Original and feedback are saved.`;
     } catch (error) { $('review-writer-status').textContent = error.message; }
   }
@@ -332,7 +338,22 @@
       }
     }
   } catch { storageFailed = true; }
-  $('review-title').textContent = config.title; $('review-comment').value = state.comment;
+  $('review-title').textContent = config.title; $('review-comment').value = state.comment; $('review-focus').value = state.focus || '';
+  if (config.revision?.editorial) {
+    const notes = config.revision.editorial, box = $('review-editorial-details'); box.replaceChildren(); $('review-editorial').hidden = false;
+    function paragraph(label, value) { if (!value) return; const p = document.createElement('p'); const b = document.createElement('strong'); b.textContent = label + ': '; p.append(b, document.createTextNode(value)); box.append(p); }
+    paragraph('Evidence coverage', notes.coverage);
+    paragraph('Inferred intent', (notes.brief?.inferred_intent || []).join(' '));
+    paragraph('Reader and depth', notes.brief?.reader_and_depth);
+    paragraph('Argument', notes.selection?.argument);
+    for (const item of notes.selection?.claims || []) { const claim = notes.claims?.find(claim => claim.id === item.claim_id); paragraph(item.place === 'archive' ? 'Left out' : 'Selected', `${claim?.statement || item.claim_id} — ${item.reason}`); }
+    for (const gap of [...(notes.snapshot_gaps || []), ...(notes.missing_evidence || [])]) paragraph('Evidence gap', gap);
+    for (const issue of notes.unresolved || []) paragraph('Unresolved review issue', issue.problem + ' ' + issue.action);
+    for (const proposal of notes.proposed_experiments || []) paragraph('Proposed follow-up', proposal);
+    paragraph('Review status', notes.unresolved?.length ? 'The revision limit was reached. These issues still need attention.' : 'The automated reviews completed. The researcher still evaluates the scientific conclusions.');
+    if (online) { const link = document.createElement('a'); link.href = `/api/report-writer/jobs/${config.revision.job_id}/artifacts`; link.textContent = 'Download full writing record'; box.append(link); }
+    if (notes.unresolved?.length) { $('review-editorial').open = true; alert('This draft has unresolved scientific review issues. See Writing notes & evidence limits.'); }
+  }
   if (config.revision) {
     $('review-revision').hidden = false;
     $('review-change-summary').textContent = config.revision.change_summary;

@@ -14,6 +14,11 @@
 </header>
 <aside id="review-sidebar" class="review-ui" aria-label="Review remarks">
   <div class="review-side-section">
+    <label for="review-focus">Writing focus</label><textarea id="review-focus" rows="3" maxlength="4000" placeholder="What should this article help the reader understand?"></textarea>
+    <p class="review-help">The writer's inferred focus appears here. Edit it and submit with your remarks to guide the next draft.</p>
+    <details id="review-editorial" hidden><summary>Writing notes &amp; evidence limits</summary><div id="review-editorial-details"></div></details>
+  </div>
+  <div class="review-side-section">
     <h2>Your review</h2><p>Green keeps the phrase. Yellow asks for improvement. Red asks for removal. Unmarked text is flexible.</p>
     <label for="review-comment">Overall remarks</label><textarea id="review-comment" rows="3" maxlength="20000" placeholder="Direction, audience, missing context…"></textarea>
     <div id="review-save-status" role="status">Opening review…</div>

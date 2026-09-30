@@ -33,6 +33,7 @@ class Feedback(StrictModel):
     expected_submission_id: str | None = Field(default=None, max_length=100)
     annotations: list[Annotation] = Field(default_factory=list, max_length=1000)
     comment: str = Field(default="", max_length=20000)
+    focus: str = Field(default="", max_length=4000)
 
 
 class Reports:
@@ -104,7 +105,7 @@ class Reports:
             except KeyError:
                 previous = None
             if previous:
-                comparable = {key: previous[key] for key in payload}
+                comparable = {key: previous.get(key, "") for key in payload}
                 comparable["annotations"] = [{key: item[key] for key in Annotation.model_fields} for item in previous["annotations"]]
                 if comparable != payload:
                     raise ValueError("Submission ID already used for different feedback")

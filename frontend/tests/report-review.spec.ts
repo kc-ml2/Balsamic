@@ -71,6 +71,7 @@ test('self-contained HTML works offline and coworkers can return reviewed HTML',
   await expect(coworker.locator('mark[data-tier=good]')).toHaveText('very strong phrase');
   await select(coworker, 'weak claim'); await coworker.keyboard.press('4');
   await coworker.getByLabel('Overall remarks').fill('Coworker: remove the unsupported claim.');
+  await coworker.getByLabel('Writing focus', { exact: true }).fill('Explain practical cost rather than general superiority.');
   const returned = coworker.waitForEvent('download'); await coworker.getByRole('button', { name: 'Download reviewed HTML', exact: true }).click();
   const reviewed = test.info().outputPath('reviewed.html'); await (await returned).saveAs(reviewed);
   await offline.close();
@@ -81,7 +82,52 @@ test('self-contained HTML works offline and coworkers can return reviewed HTML',
   await expect(page.locator('#review-receipt')).toContainText('Submitted ·');
   const data = await (await request.get('/api/reports/' + report.id)).json();
   expect(data.feedback.annotations.map((mark: { tier: string }) => mark.tier).sort()).toEqual(['bad', 'good']);
+  expect(data.feedback.focus).toBe('Explain practical cost rather than general superiority.');
   expect(errors).toEqual([]);
+});
+
+test('rough notes produce a reviewed draft with editable focus and portable writing notes', async ({ page, browser }) => {
+  await page.goto('/#reports');
+  await page.getByLabel('Your observations and intended focus').fill('Wall time matters. Keep the conclusion narrow.');
+  await page.getByRole('button', { name: 'Write a draft', exact: true }).click();
+  const progress = page.getByRole('article', { name: 'Writing progress' }).first();
+  await expect(progress).toContainText('Draft ready', { timeout: 15000 });
+  await progress.getByRole('link', { name: 'Open draft', exact: false }).click();
+  await expect(page.getByLabel('Writing focus', { exact: true })).toHaveValue('Practical cost under limited evidence');
+  await page.getByText('Writing notes & evidence limits', { exact: true }).click();
+  await expect(page.locator('#review-editorial-details')).toContainText('Matched-budget replication');
+  const artifact = page.waitForEvent('download'); await page.getByRole('link', { name: 'Download full writing record' }).click();
+  const artifactPath = test.info().outputPath('writing-record.json'); await (await artifact).saveAs(artifactPath);
+  const record = JSON.parse(await readFile(artifactPath, 'utf8'));
+  expect(record.stages.some((stage: { role: string }) => stage.role === 'report_scientific_reviewer')).toBe(true);
+  expect(record.stages.some((stage: { role: string }) => stage.role === 'report_reader_reviewer')).toBe(true);
+  expect(record.snapshot.content_hash).toBeTruthy();
+  await page.getByLabel('Writing focus', { exact: true }).fill('Make the practical recommendation explicit.');
+  await page.getByRole('button', { name: 'Submit feedback', exact: true }).click();
+  await expect(page.locator('#review-save-status')).toContainText('Submitted review');
+  await page.getByText('Share & export', { exact: true }).click();
+  const shared = page.waitForEvent('download'); await page.getByRole('button', { name: 'Download review HTML', exact: true }).click();
+  const path = test.info().outputPath('staged-draft.html'); await (await shared).saveAs(path);
+  const offline = await browser.newContext({ offline: true }), copy = await offline.newPage();
+  await copy.goto(pathToFileURL(path).href);
+  await expect(copy.getByLabel('Writing focus', { exact: true })).toHaveValue('Make the practical recommendation explicit.');
+  await expect(copy.locator('#review-editorial-details')).toContainText('Exploratory evidence only');
+  await expect(copy.getByRole('link', { name: 'Download full writing record' })).toHaveCount(0);
+  await expect(copy.locator('#report-content')).toContainText('The campaign is exploratory.');
+  await offline.close();
+});
+
+test('a fundamental focus question can be answered without replaying the brief', async ({ page }) => {
+  await page.goto('/#reports');
+  await page.getByLabel('Your observations and intended focus').fill('Two incompatible purposes; ask me about the focus.');
+  await page.getByRole('button', { name: 'Write a draft', exact: true }).click();
+  const progress = page.getByRole('article', { name: 'Writing progress' }).first();
+  await expect(progress).toContainText('A question about your focus', { timeout: 15000 });
+  await page.reload();
+  await progress.getByLabel('Emphasize cost or learning dynamics?').fill('Cost for deployment.');
+  await progress.getByRole('button', { name: 'Continue writing' }).click();
+  await expect(progress).toContainText('Draft ready', { timeout: 15000 });
+  await expect(progress).toContainText('9 of at most 14 model calls');
 });
 
 test('stale submissions and mismatched imports retain both reviewers work', async ({ page, request, browser }) => {

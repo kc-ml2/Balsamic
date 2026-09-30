@@ -24,13 +24,20 @@ def main(argv=None):
     export.add_argument("--output", type=Path, required=True)
     export.add_argument("--review", action="store_true")
     write = commands.add_parser("write")
-    write.add_argument("--evidence", type=Path, required=True)
+    write.add_argument("--evidence", type=Path)
     write.add_argument("--brief", required=True)
     write.add_argument("--campaign-id")
+    write.add_argument("--reference", action="append", default=[])
     revise = commands.add_parser("revise")
     revise.add_argument("--report-id", required=True)
     revise.add_argument("--submission-id", required=True)
     revise.add_argument("--instruction", default="Revise the report using this submitted feedback.")
+    for command in (write, revise):
+        command.add_argument("--workflow", choices=("staged", "single", "legacy"), default="staged")
+        command.add_argument("--no-literature", action="store_true")
+    answer = commands.add_parser("answer")
+    answer.add_argument("--job-id", required=True)
+    answer.add_argument("--answer", required=True)
     args = parser.parse_args(argv)
     reports = Reports(Store(args.directory))
     if args.command == "import":
@@ -45,12 +52,16 @@ def main(argv=None):
         workspace = Workspace(args.directory)
         writer = ReportWriter(workspace)
         if args.command == "write":
-            job = writer.start(evidence=json.loads(args.evidence.read_text()), brief=args.brief,
-                campaign_id=args.campaign_id, background=False)
-        else:
+            job = writer.start(evidence=json.loads(args.evidence.read_text()) if args.evidence else None, brief=args.brief,
+                campaign_id=args.campaign_id, references=args.reference, literature=not args.no_literature,
+                workflow=args.workflow, background=False)
+        elif args.command == "revise":
             job = writer.start(report_id=args.report_id, request=WriterRequest(submission_id=args.submission_id,
-                request_id=identifier("cli"), instruction=args.instruction), background=False)
-        print(json.dumps({key: job.get(key) for key in ("id", "status", "result_id", "error", "usage")}, indent=2))
+                request_id=identifier("cli"), instruction=args.instruction, workflow=args.workflow,
+                literature=not args.no_literature), background=False)
+        else:
+            job = writer.answer(args.job_id, args.answer, background=False)
+        print(json.dumps({key: job.get(key) for key in ("id", "status", "stage", "question", "result_id", "error", "usage")}, indent=2))
         if job["status"] != "completed":
             raise SystemExit(1)
 
