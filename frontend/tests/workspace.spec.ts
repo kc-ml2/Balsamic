@@ -137,7 +137,8 @@ test('charter revision sends only permitted task fields and preserves explicit p
   await expect(page.getByRole('dialog')).not.toBeVisible();
   expect(writes[0].url).toBe('/api/v1/commands');
   expect(writes[0].body).toMatchObject({ operation: 'campaign.update', expected_revision: campaign.version });
-  expect(Object.keys(writes[0].body.payload.tasks[0]).sort()).toEqual(['configuration', 'id', 'name', 'problem_id', 'split']);
+  // A legacy task without a problem id keeps the server's default adapter; the form no longer assumes one.
+  expect(Object.keys(writes[0].body.payload.tasks[0]).sort()).toEqual(['configuration', 'id', 'name', 'split']);
   expect(writes[0].body.payload.tasks[0].configuration).toEqual(task.physics);
 });
 

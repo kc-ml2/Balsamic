@@ -54,12 +54,12 @@ test('LLM usage shows spend against the cap, a stacked token chart with hover de
   await expect(page.locator('.llm-breakdown').filter({hasText:'By agent'})).toContainText('Results analyst');
 });
 
-test('dev mode switches an agent within the campaign family; implementation agents stay frozen',async({page})=>{
+test('dev mode switches an agent within its own family; implementation agents stay frozen',async({page})=>{
   const commands:any[]=[];
   await mock(page,commands);
   await page.goto('/#models');
   await expect(page.getByRole('heading',{name:'Agent models'})).toBeVisible();
-  await expect(page.getByText('(frozen with its grant)')).toBeVisible();
+  await expect(page.getByText('Frozen with its grant')).toBeVisible();
   await page.getByLabel('Results analyst model').selectOption('deepseek/deepseek-flash');
   const thinking=page.getByLabel('Results analyst thinking level');
   await expect(thinking.locator('option')).toHaveText(['Model default','off','low','high','max']);

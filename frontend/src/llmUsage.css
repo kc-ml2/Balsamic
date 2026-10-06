@@ -39,3 +39,9 @@
 /* Narrow panels: keep axis text legible and tables intact; scroll within the card. */
 .llm-breakdown{overflow-x:auto}
 @media (max-width:760px){.llm-chart-frame{overflow-x:auto}.llm-chart-frame svg{min-width:560px}}
+.model-tiers .data-table input,.model-tiers .data-table select{min-width:140px}
+.model-tiers-roles{margin:22px 0 10px}
+.model-tier-roles{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.model-tiers .callout{margin-bottom:14px}
+.agent-models-fallback{margin:4px 0 18px}.agent-models-fallback h3{margin-bottom:8px}
+.agent-model-source{white-space:nowrap}.agent-model-source .text-button{display:block;margin-top:4px}

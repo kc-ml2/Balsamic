@@ -127,6 +127,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     install_pi(app, workspace)
     from optimization_framework.agents.development_api import install as install_development
     install_development(app, workspace)
+    from optimization_framework.problem_import.api import install as install_problem_import
+    install_problem_import(app, workspace)
     from optimization_framework.api.reports import install as install_reports
     install_reports(app, workspace)
 

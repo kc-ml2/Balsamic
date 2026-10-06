@@ -16,6 +16,7 @@ from optimization_framework.storage.sqlite import now
 from . import usage as llm_usage
 from .client import PiClient
 from .families import family_of, check_same_family
+from . import tiers
 from .models import Activate, Configure, Message, Control, ROLES, LEAD
 
 ACTIVE = {"queued", "submitted", "running"}
@@ -177,11 +178,16 @@ class PiController:
                 raise ValueError("Assignments require this campaign's lead agent")
         config = self.configuration(campaign_id) or {}
         models = config.get("models") or LEGACY_MODELS
-        choice = models["roles"].get(role) or models["default"]
-        family = check_same_family(config.get("llm_family"), choice["provider"], choice["model"])
+        # Saved dev-mode tiers decide a role's model; otherwise the campaign's own choice does.
+        choice, tier = self.tier_choice(role)
+        choice = choice or models["roles"].get(role) or models["default"]
+        # The family lock is per agent: a session never continues on another family, but a
+        # campaign may mix families across roles (e.g. a strong lead and a fast specialist).
+        family = family_of(choice["provider"], choice["model"])
         record = {"id": identity, "campaign_id": campaign_id, "parent_agent_id": parent_id,
             "role": role, "objective": objective, "evidence_ids": evidence_ids or [], "grant_id": grant_id,
             "provider": choice["provider"], "model": choice["model"], "family": family,
+            "tier": tier, "model_source": "tier" if tier else "campaign",
             "reasoning_effort": choice.get("effort"), "status": "queued", "control_revision": 0,
             "created_at": now(), "event_cursor": 0,
             "usage": {"billing_mode": "unknown", "api_cost_usd": 0, "cost_usd": 0, "charged_usd": 0},
@@ -199,6 +205,13 @@ class PiController:
         if choice.get("effort") and choice["effort"] not in model["thinking_levels"]:
             raise ValueError(f"{choice['model']} supports thinking levels {', '.join(model['thinking_levels'])}")
 
+    def tier_choice(self, role):
+        """(model, tier id) from saved dev-mode tiers, or (None, None)."""
+        if not dev_profile():
+            return None, None
+        settings = tiers.load(self.store)
+        return tiers.choice_for(settings, role) if settings.get("saved") else (None, None)
+
     def configure(self, campaign_id, payload, command_id):
         values = Configure.model_validate(payload)
         if not dev_profile():
@@ -206,26 +219,69 @@ class PiController:
         config = self.configuration(campaign_id)
         if not config or not config["enabled"]:
             raise ValueError("Activate the agent team for this campaign first")
-        choice = values.model.model_dump()
-        family = check_same_family(config.get("llm_family"), choice["provider"], choice["model"])
+        if values.follow_tier:
+            if values.agent_id is None:
+                raise ValueError("Choose the agent that should follow its role's tier")
+            agent = self._own_agent(campaign_id, values.agent_id)
+            choice, tier = self.tier_choice(agent["role"])
+            if choice is None:
+                raise ValueError("Save model tiers with a tier for this role first")
+            self._switch(agent, choice, command_id, tier=tier, source="tier")
+            return self.view(campaign_id)
+        choice = values.model.model_dump(exclude={"schema_version"})
         self._check_available(choice)
         if values.agent_id is None:
             # A new campaign default applies to agents created from now on, for every role.
             config["models"] = {"default": choice, "roles": {}, "changed_at": now(), "command_id": command_id}
             self.store.put("agent_campaign", config, "agent.models_changed")
             return self.view(campaign_id)
-        agent = self.store.get(values.agent_id, "agent_session")
+        agent = self._own_agent(campaign_id, values.agent_id)
+        # A model chosen for one agent pins it; tier changes no longer move it.
+        self._switch(agent, choice, command_id, tier=None, source="agent")
+        return self.view(campaign_id)
+
+    def _own_agent(self, campaign_id, agent_id):
+        agent = self.store.get(agent_id, "agent_session")
         if agent["campaign_id"] != campaign_id:
             raise ValueError("Agent belongs to another campaign")
         if agent.get("grant_id"):
             raise ValueError("Implementation agents keep the model frozen with their grant")
+        return agent
+
+    def _switch(self, agent, choice, reason, *, tier, source):
+        family = check_same_family(agent.get("family") or family_of(agent.get("provider"), agent["model"]),
+                                   choice["provider"], choice["model"])
         history = agent.get("model_history", []) + [{"provider": agent.get("provider"), "model": agent["model"],
-            "effort": agent.get("reasoning_effort"), "until": now(), "command_id": command_id}]
-        agent.update(provider=choice["provider"], model=choice["model"], reasoning_effort=choice["effort"],
-                     family=family, model_history=history[-50:])
+            "effort": agent.get("reasoning_effort"), "until": now(), "command_id": reason}]
+        agent.update(provider=choice["provider"], model=choice["model"], reasoning_effort=choice.get("effort"),
+                     family=family, tier=tier, model_source=source, model_history=history[-50:])
         # The harness applies the change at the agent's next turn.
         self.store.put("agent_session", agent, "agent.model_changed")
-        return self.view(campaign_id)
+
+    def apply_tiers(self, settings):
+        """Move tier-following agents to their role's tier; pinned, frozen and cross-family agents stay."""
+        updated, blocked = [], []
+        reason = f"model_tiers_{settings['revision']}"
+        for config in self.store.list("agent_campaign"):
+            if not config.get("enabled"):
+                continue
+            for agent in self.store.list("agent_session", config["campaign_id"]):
+                pinned = agent.get("model_source") == "agent" or (not agent.get("model_source") and agent.get("model_history"))
+                if agent.get("grant_id") or pinned or agent.get("status") in {"stopped", "completed", "failed"}:
+                    continue
+                choice, tier = tiers.choice_for(settings, agent["role"])
+                if choice is None:
+                    continue
+                current = (agent.get("provider"), agent["model"], agent.get("reasoning_effort"))
+                if current == (choice["provider"], choice["model"], choice.get("effort")) and agent.get("tier") == tier:
+                    continue
+                try:
+                    self._switch(agent, choice, reason, tier=tier, source="tier")
+                    updated.append(agent["id"])
+                except ValueError as exc:
+                    blocked.append({"agent_id": agent["id"], "campaign_id": agent["campaign_id"], "role": agent["role"],
+                                    "reason": str(exc)})
+        return {"updated": updated, "blocked": blocked}
 
     def enqueue(self, agent, identity, text, *, mode="follow_up", manager_command_id=None):
         try:

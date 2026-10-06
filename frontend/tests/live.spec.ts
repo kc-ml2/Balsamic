@@ -14,6 +14,7 @@ test('real API supports browser campaign, simultaneous baseline trials, validati
   await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('180');
   await dialog.getByLabel('Validation reserve (seconds)').fill('30');
   await dialog.getByLabel('Problem adapter').selectOption('meent_grating');
+  await dialog.getByRole('button', { name: 'Edit as JSON' }).click();
   await dialog.getByLabel('Problem configuration (JSON)').fill(JSON.stringify({ n_cells: 8, wavelength_nm: 1100, deflection_angle_deg: 50, thickness_nm: 325, material: 'constant', fourier_order: 3 }));
   await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
   await expect(dialog).not.toBeVisible();

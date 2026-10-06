@@ -57,6 +57,23 @@ class MeentProblem:
                for item in store.list("confirmation_condition", campaign_id)):
             raise ValueError("This MEENT condition was exposed by an earlier confirmation cohort")
 
+    def examples(self):
+        """The original 1D deflector, as a New campaign starting point."""
+        return [{
+            "id": "meent_grating_1100nm_50deg", "order": 10,
+            "name": "1D binary grating \u00b7 1100 nm, 50\u00b0 deflector",
+            "summary": "64-cell silicon/air binary grating on silica deflecting 1100 nm light into the +1 transmitted "
+                       "order at 50 degrees; 325 nm thick, RCWA with MEENT.",
+            "instances": [{
+                "name": "1100 nm \u00b7 50\u00b0 deflector", "problem_id": "meent_grating",
+                "configuration": {"n_cells": 64, "wavelength_nm": 1100, "deflection_angle_deg": 50, "thickness_nm": 325,
+                    "n_incident": 1.45, "n_exit": 1, "material": "constant", "silicon_n": 3.551726470588235,
+                    "silicon_k": 0, "fourier_order": 15},
+            }],
+            "campaign": {"name": "Optimizer research",
+                "objective": "Develop an effective optimizer for the selected problem under the declared resource budget."},
+        }]
+
     def describe(self):
         return ProblemDefinition(id="meent_grating", version="1", name="MEENT binary grating",
             evaluator_id="meent_rcwa", evaluator_version="0.13.2-v1",

@@ -284,6 +284,7 @@ for (const domain of ['bounded_continuous', 'meent_grating']) {
     await dialog.getByLabel('Problem adapter').selectOption(domain);
     await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('60');
     await dialog.getByLabel('Validation reserve (seconds)').fill('0');
+    await dialog.getByRole('button', { name: 'Edit as JSON' }).click();
     await dialog.getByLabel('Problem configuration (JSON)').fill(JSON.stringify(domain === 'meent_grating'
       ? { n_cells: 4, fourier_order: 1 } : { dimensions: 2, function: 'quadratic', bounds: [[-3, 3], [-3, 3]] }));
     await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();

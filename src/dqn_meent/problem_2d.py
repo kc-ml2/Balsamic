@@ -15,6 +15,28 @@ PROBLEM_ID = "meent_2d_dual_polarization_deflector"
 DEFINITION_VERSION = "flrl-2d-v1"
 EVALUATOR_VERSION = "meent-0.13.2-flrl-2d-v1"
 ORDER_CONVERGENCE_RECIPE = "meent_2d_order_convergence:v1"
+FLRL_OBJECTIVE = (
+    "Design one periodic 2D silicon/air freeform metasurface that sends 1050 nm light (normal incidence inferred from the "
+    "stated period relation) from silica (n=1.45) into transmitted diffraction order (+1, 0) at 75 degrees in x, for both "
+    "TE and TM incidence. The patterned layer is 325 nm thick, sampled on a 256 x 128 binary grid; "
+    "Px = 1050/sin(75 degrees) = 1087.0399894305872 nm and Py = 525 nm, with air above. The FLRL reference code's scalar "
+    "score is the equal-weight mean of the absolute +1 transmitted efficiencies for TE and TM, each divided by its own "
+    "incident power. Record both efficiencies and their minimum separately; the released FLRL code explicitly computes "
+    "(TE + TM)/2. The task describes physical binary designs. Fourier level-set coefficients with a real-valued level-set "
+    "function and geometry symmetric under y-to-minus-y reflection are a proposed search representation, not RCWA "
+    "truncation. Compare the paper's FLRL/PPO approach at level-set mode limits (Nx, Ny) = (2,1), (4,2), (6,3), and (8,4) "
+    "against matched-budget baselines using the installed 2D MEENT evaluator; verify RCWA convergence and cross-version "
+    "parity before reproduction claims. The manuscript's 93.5% best result at (8,4) is prior literature, not a measurement "
+    "in this campaign. The paper-code reference uses n(Si)=3.567390909 at 1050 nm by linear interpolation of its CSV n "
+    "column (ignoring k), MEENT 0.9.5, RCWA fto=(10,5), complex128 Torch CPU, normal incidence from silica to air, and "
+    "TE/TM pol=0/1. Validate its order indexing and convergence, independently check the evaluator, and measure "
+    "per-evaluation cost before trials. The released 2D training config has 100,000 timesteps, one environment, and four "
+    "stacked observations, whereas the manuscript describes 500,000 samples, four environments, and a three-step history; "
+    "treat these as distinct reference settings until reconciled. Sources: the Octavian FLRL manuscript (main text and "
+    "supplementary methods) and the released FLRL code at commit 7838e71313d71cee8e2db3b432f41f80b9106a95. This reported "
+    "condition is development evidence and must not be labeled an untouched test condition. The installed campaign "
+    "evaluator uses MEENT 0.13.2 and runs both polarizations; its current numerical checks cover uniform layers and an "
+    "x-only stripe, not arbitrary 2D-pattern convergence.")
 
 CONFIGURATION_SCHEMA = {
     "type": "object",
@@ -98,6 +120,33 @@ def _integer(value: Any, name: str, *, minimum: int = 0) -> int:
 
 
 class Meent2DProblem:
+    def examples(self):
+        """The Octavian FLRL paper's reported condition, as a New campaign starting point."""
+        return [{
+            "id": "flrl_2d_deflector_1050nm_75deg", "order": 20,
+            "name": "2D dual-polarization beam deflector · Octavian FLRL",
+            "summary": "Periodic 2D silicon/air freeform metasurface sending 1050 nm light from silica into the (+1, 0) "
+                       "transmitted order at 75 degrees for both TE and TM; 256 x 128 binary grid, 325 nm thick.",
+            "instances": [{
+                "name": "1050 nm, 75\u00b0, TE+TM, 256\u00d7128 Si/air beam deflector",
+                "problem_id": PROBLEM_ID,
+                "configuration": {
+                    "wavelength_nm": 1050.0, "target_angle_deg": 75.0, "period_x_nm": 1087.0399894305872,
+                    "period_y_nm": 525.0, "thickness_nm": 325.0, "grid_x": 256, "grid_y": 128,
+                    "incident_n": 1.45, "exit_n": 1.0, "incident_angle_deg": 0.0,
+                    "target_order_x": 1, "target_order_y": 0,
+                    "silicon_index_source": "FLRL Si_refractive_data.csv at commit 7838e71313d71cee8e2db3b432f41f80b9106a95; "
+                                            "linear interpolation of n column, k ignored",
+                    "silicon_n_1050": 3.567390909090909, "reference_meent_version": "0.9.5"},
+                "fidelity": {"rcwa_order_x": 10, "rcwa_order_y": 5},
+            }],
+            "campaign": {
+                "name": "2D dual-polarization beam deflector \u2014 Octavian FLRL paper",
+                "objective": FLRL_OBJECTIVE, "compute_budget_seconds": 248400.0, "validation_reserve_seconds": 600.0,
+                "delegated_trial_seconds": 3600.0, "implementation_compute_budget_seconds": 900.0,
+                "llm_budget_usd": 5.0, "autonomy": "delegated"},
+        }]
+
     def describe(self) -> ProblemDefinition:
         return ProblemDefinition(
             id=PROBLEM_ID, version=DEFINITION_VERSION,

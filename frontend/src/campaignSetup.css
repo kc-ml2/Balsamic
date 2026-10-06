@@ -1,0 +1,13 @@
+.setup-start{margin:0 0 20px}.setup-start h3{margin:0 0 10px;font-size:13px}
+.setup-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px}
+.setup-card{display:flex;flex-direction:column;gap:6px;text-align:left;background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px 13px;min-width:0}
+.setup-card:hover{border-color:#b9cdbf;background:#fbfcf9}
+.setup-card.selected{border-color:var(--teal);box-shadow:0 0 0 3px #246e6014;background:var(--teal-soft)}
+.setup-card strong{display:flex;align-items:center;gap:6px;font-size:13px;line-height:1.35;color:var(--ink)}
+.setup-card span{font-size:12px;line-height:1.5;color:var(--muted);overflow-wrap:anywhere}
+.setup-card small{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:11px;color:#527247;margin-top:auto}
+.setup-card.import{border-style:dashed}
+.setup-fields{border:1px solid #dfe7d6;border-radius:8px;padding:14px 16px 16px;margin:0;min-width:0}
+.setup-fields legend{padding:0 6px;color:#527247;font-size:12px;font-weight:600}
+.setup-instance-actions{display:flex;justify-content:flex-end}
+@media (max-width:640px){.setup-cards{grid-template-columns:1fr}}

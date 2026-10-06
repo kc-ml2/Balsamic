@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 from optimization_framework.contracts.base import content_hash
 from .client import service_token
 from .tools import PiTools, READ_KINDS
+from optimization_framework.problem_import.service import is_import_agent
 
 
 class Context(BaseModel):
@@ -67,24 +68,54 @@ def install(app, workspace):
         workspace.store.get(campaign_id, "campaign")
         return workspace.pi.view(campaign_id)
 
-    @app.get("/api/campaigns/{campaign_id}/agents/models")
-    def agent_models(campaign_id: str):
-        """Models a researcher may choose in dev mode: signed-in providers, this campaign's family only."""
-        from .controller import dev_profile
+    def harness_models():
         from .families import family_of
-        workspace.store.get(campaign_id, "campaign")
         try:
-            status = workspace.pi.client.status()
+            status = workspace.pi.client.status() or {}
             workspace.pi.harness_status = status
         except (ValueError, OSError):
             status = workspace.pi.harness_status or {}
-        config = workspace.pi.configuration(campaign_id) or {}
-        family = config.get("llm_family")
         models = [{**model, "family": family_of(model["provider"], model["id"])} for model in status.get("models", [])
                   if isinstance(model, dict)]
-        return {"mode": "dev" if dev_profile() else "locked", "family": family, "default": (config.get("models") or {}).get("default"),
-                "providers": status.get("providers", {}),
-                "models": [m for m in models if family is None or m["family"] == family]}
+        return status, models
+
+    @app.get("/api/campaigns/{campaign_id}/agents/models")
+    def agent_models(campaign_id: str):
+        """Models a researcher may choose in dev mode. An agent may switch only within its own family."""
+        from .controller import dev_profile
+        workspace.store.get(campaign_id, "campaign")
+        status, models = harness_models()
+        config = workspace.pi.configuration(campaign_id) or {}
+        return {"mode": "dev" if dev_profile() else "locked", "default": (config.get("models") or {}).get("default"),
+                "providers": status.get("providers", {}), "models": models}
+
+    def tier_view(status=None, models=None):
+        from .controller import dev_profile, profile_defaults
+        from .tiers import ASSIGNABLE, load
+        if models is None:
+            status, models = harness_models()
+        return {"mode": "dev" if dev_profile() else "locked", **load(workspace.store, profile_defaults()),
+                "assignable": list(ASSIGNABLE), "providers": (status or {}).get("providers", {}), "models": models}
+
+    @app.get("/api/v1/model-tiers")
+    def model_tiers():
+        return tier_view()
+
+    @app.put("/api/v1/model-tiers")
+    def save_model_tiers(values: dict):
+        from .controller import dev_profile
+        from .tiers import TierSettings, save
+        if not dev_profile():
+            raise ValueError("Model tiers can be changed only when the Pi harness runs a dev profile")
+        settings = TierSettings.model_validate(values)
+        status, models = harness_models()
+        workspace.pi.harness_status = status
+        for tier in settings.tiers:
+            workspace.pi._check_available(tier.model.model_dump(exclude={"schema_version"}))
+        with workspace.lock, workspace.store.transaction():
+            record = save(workspace.store, settings)
+            applied = workspace.pi.apply_tiers(record)
+        return {**tier_view(status, models), "applied": applied}
 
     @app.get("/api/v1/llm-usage")
     def llm_usage(campaign_id: str, since: str | None = None, bucket: str = "hour"):
@@ -112,6 +143,9 @@ def install(app, workspace):
 
     @app.post("/api/internal/pi/manifest", dependencies=[Depends(authenticate)])
     def manifest(body: Context):
+        # Problem importers are Pi agents without a campaign; they have their own tools.
+        if is_import_agent(body.agent_id):
+            return workspace.problem_imports.manifest(body.agent_id, body.run_id)
         return gateway.manifest(body.agent_id, body.run_id)
 
     @app.post("/api/campaigns/{campaign_id}/agents/login")
@@ -122,10 +156,15 @@ def install(app, workspace):
     @app.post("/api/internal/pi/notify", dependencies=[Depends(authenticate)])
     def notify(body: Notice):
         # A hint only: the controller pulls the agents' authoritative state.
-        return workspace.pi.notify(body.agent_ids)
+        imports = [agent_id for agent_id in body.agent_ids if is_import_agent(agent_id)]
+        if imports:
+            workspace.problem_imports.notify(imports)
+        return workspace.pi.notify([agent_id for agent_id in body.agent_ids if not is_import_agent(agent_id)])
 
     @app.post("/api/internal/pi/tool", dependencies=[Depends(authenticate)])
     def tool(body: ToolCall):
+        if is_import_agent(body.agent_id):
+            return workspace.problem_imports.call(**body.model_dump())
         return gateway.call(**body.model_dump())
 
     @app.post("/api/internal/pi/implementation", dependencies=[Depends(authenticate)])

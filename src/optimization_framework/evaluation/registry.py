@@ -67,6 +67,15 @@ class ProblemRegistry:
             self._adapters[name] = adapter
         return self._adapters[name]
 
+    def examples(self) -> list[dict]:
+        """Starting setups that installed adapters publish through an optional ``examples()`` hook."""
+        result = []
+        for name in self.ids():
+            hook = getattr(self.get(name), "examples", None)
+            if hook is not None:
+                result.extend(hook())
+        return result
+
     def resolve(self, name: str, configuration: dict, fidelity: dict | None = None) -> ProblemInstance:
         return self.get(name).resolve(configuration, fidelity)
 

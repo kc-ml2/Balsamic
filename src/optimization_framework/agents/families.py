@@ -1,8 +1,9 @@
-"""LLM families: a campaign's agents never continue on a different model family.
+"""LLM families: an agent never continues its session on a different model family.
 
 Transcripts, tool-call conventions and reasoning traces differ between vendors, so
-resuming a campaign written by one family with another is refused. Switching models
-within a family is allowed (and recorded) while that experience accumulates.
+continuing a conversation written by one family with another is refused. Switching
+models within a family is allowed (and recorded). Different agents of one campaign may
+use different families, e.g. through model tiers.
 """
 import re
 

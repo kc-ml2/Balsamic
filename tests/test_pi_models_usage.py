@@ -53,13 +53,13 @@ def test_dev_mode_activation_uses_the_profile_default_and_locks_its_family(tmp_p
     lead = workspace.store.get(lead["id"], "agent_session")
     assert (lead["model"], lead["reasoning_effort"]) == ("deepseek-flash", "max")
     assert lead["model_history"][-1]["model"] == "deepseek-v4-pro"
+    # The lock is per agent: a session never continues on another family ...
     with pytest.raises(ValueError, match="model family"):
         configure(workspace, record, "cross", lead["id"], "anthropic", "claude-opus")
-    with pytest.raises(ValueError, match="model family"):
-        configure(workspace, record, "cross_default", None, "openai", "gpt-5.5")
-    configure(workspace, record, "default", None, "deepseek", "deepseek-flash", "high")
+    # ... but new agents in the same campaign may use another family.
+    configure(workspace, record, "cross_default", None, "openai", "gpt-5.5")
     child = workspace.pi.create_agent(record["id"], "methodology_specialist", "Review", "child", parent_id=lead["id"])
-    assert (child["model"], child["reasoning_effort"]) == ("deepseek-flash", "high")
+    assert (child["family"], child["model"], child["model_source"]) == ("openai", "gpt-5.5", "campaign")
 
 
 def test_known_models_and_thinking_levels_are_validated(tmp_path, monkeypatch):
@@ -119,3 +119,53 @@ def test_calls_recorded_before_accounting_are_backfilled_from_the_agent_log(tmp_
     reopened = Workspace(tmp_path / "workspace")
     rows = usage.summary(reopened.store, record["id"])["by_model"]
     assert rows[0]["total_tokens"] == 12 and rows[0]["cost_usd"] is None and rows[0]["charged_usd"] == 0
+
+
+def test_tiers_move_following_agents_and_never_cross_an_agents_family(tmp_path, monkeypatch):
+    from optimization_framework.agents import tiers
+    workspace, record, lead = campaign(tmp_path, monkeypatch)
+    def save(revision, strong, medium):
+        settings = tiers.TierSettings.model_validate({"expected_revision": revision, "tiers": [
+            {"id": "strong", "label": "Strong", "model": strong}, {"id": "medium", "label": "Medium", "model": medium}],
+            "roles": {"lead": "strong", "methodology_specialist": "medium", "literature_specialist": "medium", "problem_importer": "medium"}})
+        saved = tiers.save(workspace.store, settings)
+        return saved, workspace.pi.apply_tiers(saved)
+    sol = {"provider": "openai-codex", "model": "gpt-6-sol", "effort": "xhigh"}
+    flash = {"provider": "deepseek", "model": "deepseek-flash", "effort": None}
+    saved, applied = save(0, sol, flash)
+    # The existing DeepSeek lead cannot move to an OpenAI tier; it keeps its model and the conflict is reported.
+    assert applied["updated"] == [] and [row["agent_id"] for row in applied["blocked"]] == [lead["id"]]
+    assert workspace.store.get(lead["id"], "agent_session")["model"] == "deepseek-v4-pro"
+    child = workspace.pi.create_agent(record["id"], "methodology_specialist", "Review", "child", parent_id=lead["id"])
+    assert (child["model"], child["tier"], child["model_source"]) == ("deepseek-flash", "medium", "tier")
+    pinned = workspace.pi.create_agent(record["id"], "literature_specialist", "Search", "pinned", parent_id=lead["id"])
+    configure(workspace, record, "pin", pinned["id"], "deepseek", "deepseek-v4-pro", "high")
+    with pytest.raises(ValueError, match="Model tiers changed"):
+        save(0, sol, flash)
+    saved, applied = save(1, sol, {"provider": "deepseek", "model": "deepseek-v4-pro", "effort": "max"})
+    assert applied["updated"] == [child["id"]]
+    child = workspace.store.get(child["id"], "agent_session")
+    assert (child["model"], child["reasoning_effort"], child["model_history"][-1]["model"]) == ("deepseek-v4-pro", "max", "deepseek-flash")
+    assert workspace.store.get(pinned["id"], "agent_session")["reasoning_effort"] == "high"
+    workspace.commands.execute(Command(id="follow", campaign_id=record["id"], expected_revision=workspace.store.get(record["id"], "campaign")["version"],
+        operation="agent.configure", payload={"agent_id": pinned["id"], "follow_tier": True}))
+    pinned = workspace.store.get(pinned["id"], "agent_session")
+    assert (pinned["reasoning_effort"], pinned["model_source"], pinned["tier"]) == ("max", "tier", "medium")
+    # A new campaign's lead follows the strong tier, so one campaign can mix families across roles.
+    other = workspace.create_campaign(CampaignInput(name="Mixed", compute_budget_seconds=100, validation_reserve_seconds=10,
+        tasks=[TaskInput(name="Quadratic", problem_id="bounded_continuous", configuration={})]))
+    workspace.commands.execute(Command(id="activate_other", campaign_id=other["id"], expected_revision=1,
+        operation="agent.activate", payload={"objective": "Work within the allocation"}))
+    second_lead = workspace.store.get(workspace.pi.configuration(other["id"])["lead_id"], "agent_session")
+    assert (second_lead["family"], second_lead["model"], second_lead["tier"]) == ("openai", "gpt-6-sol", "strong")
+    specialist = workspace.pi.create_agent(other["id"], "methodology_specialist", "Review", "mixed", parent_id=second_lead["id"])
+    assert specialist["family"] == "deepseek"
+
+
+def test_tier_settings_reject_unknown_roles_and_missing_tiers():
+    from optimization_framework.agents.tiers import TierSettings
+    model = {"provider": "deepseek", "model": "deepseek-flash"}
+    with pytest.raises(ValueError, match="Unknown agent roles"):
+        TierSettings.model_validate({"tiers": [{"id": "fast", "label": "Fast", "model": model}], "roles": {"wizard": "fast"}})
+    with pytest.raises(ValueError, match="undefined tiers"):
+        TierSettings.model_validate({"tiers": [{"id": "fast", "label": "Fast", "model": model}], "roles": {"lead": "strong"}})

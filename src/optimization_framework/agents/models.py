@@ -1,5 +1,5 @@
 from typing import Literal
-from pydantic import Field
+from pydantic import Field, model_validator
 from optimization_framework.contracts.base import Contract
 
 
@@ -29,9 +29,19 @@ class Activate(Contract):
 
 
 class Configure(Contract):
-    """Dev mode: change the model or thinking level of one agent, or the campaign default."""
+    """Dev mode: change the model or thinking level of one agent, or the campaign default.
+
+    follow_tier releases an agent pinned to its own model back to its role's tier.
+    """
     agent_id: str | None = None
-    model: ModelChoice
+    model: ModelChoice | None = None
+    follow_tier: bool = False
+
+    @model_validator(mode="after")
+    def one_change(self):
+        if (self.model is None) != self.follow_tier:
+            raise ValueError("Choose a model, or ask the agent to follow its tier")
+        return self
 
 
 class Message(Contract):

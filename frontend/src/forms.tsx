@@ -1,47 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { api, errorText, physicsDefaults } from './api';
-import type { Campaign, Hypothesis, Json, State, Task, Trial } from './api';
+import { errorText } from './api';
+import type { Campaign, Hypothesis, Json, State, Trial } from './api';
 import { ErrorNotice, Field, Icon, Modal } from './ui';
-import { newProblemManifest, ProblemManifestFields } from './evaluatorForms';
 import { useCommand } from './commands';
 
 const lines = (value: string) => value.split('\n').map(s => s.trim()).filter(Boolean);
 const parseObject = (value: string): Json => { const parsed = JSON.parse(value || '{}'); if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') throw new Error('Configuration must be a JSON object.'); return parsed; };
 type Done = (result?: Json) => void;
 
-export function CampaignForm({ state, editing, onClose, onDone }: { state: State; editing?: boolean; onClose: () => void; onDone: Done }) {
-  const [current] = useState(editing ? state.campaign : null);
-  const command = useCommand(current);
-  const [name, setName] = useState(current?.name || 'Optimizer research');
-  const [objective, setObjective] = useState(current?.objective || 'Develop an effective optimizer for the selected problem under the declared resource budget.');
-  const [compute, setCompute] = useState(String(current?.compute_budget_seconds ?? 3600));
-  const [implementationCompute, setImplementationCompute] = useState(String(current?.implementation_compute_budget_seconds ?? 0));
-  const [llm, setLlm] = useState(String(current?.llm_budget_usd ?? 5));
-  const [reserve, setReserve] = useState(String(current?.validation_reserve_seconds ?? 120));
-  const [autonomy, setAutonomy] = useState(current?.autonomy || 'guided');
-  const [tasks, setTasks] = useState<Array<Partial<Task> & { config: string }>>(current ? state.tasks.map(t => ({ ...t, config: JSON.stringify(t.evaluator_manifest ? t.configuration : t.configuration ? { ...t.configuration, ...t.fidelity } : t.physics, null, 2) })) : [{ name: '1100 nm · 50° deflector', problem_id: 'meent_grating', split: 'development', config: JSON.stringify(physicsDefaults, null, 2) }]);
-  const [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  async function save(event: FormEvent) {
-    event.preventDefault(); setError(''); setBusy(true);
-    try {
-      const payload = { name, objective, compute_budget_seconds: Number(compute), implementation_compute_budget_seconds: Number(implementationCompute), llm_budget_usd: Number(llm), validation_reserve_seconds: Math.min(Number(reserve), Number(compute)), autonomy, tasks: tasks.map(({ config, id, name: taskName, split, problem_id, evaluator_manifest, fidelity }) => ({ ...(id ? { id } : {}), name: taskName, split, problem_id: evaluator_manifest?.id || problem_id || 'meent_grating', configuration: parseObject(config), ...(evaluator_manifest ? { evaluator_manifest, fidelity: fidelity || {} } : {}) })) };
-      const result = await command(current ? 'campaign.update' : 'campaign.create', payload);
-      onDone(result.campaign);
-    } catch (e) { setError(errorText(e)); } finally { setBusy(false); }
-  }
-  const [adapters, setAdapters] = useState<Json[]>([]);
-  useEffect(() => { api('/api/v1/problems').then(result => setAdapters(result.problems || [])).catch(e => setError(errorText(e))); }, []);
-  function selectProblem(index: number, problemId: string) {
-    if (problemId === '__commission__') { const manifest = newProblemManifest(index); setTasks(tasks.map((task, i) => i === index ? { ...task, problem_id: manifest.id, evaluator_manifest: manifest, config: '{}', fidelity: {} } : task)); return; }
-    const definition = adapters.find(a => a.id === problemId);
-    const properties = definition?.configuration_schema?.properties || {};
-    const defaults = Object.fromEntries(Object.entries(properties).filter(([, p]) => (p as Json).default !== undefined).map(([k, p]) => [k, (p as Json).default]));
-    setTasks(tasks.map((t, i) => i === index ? { ...t, problem_id: problemId, evaluator_manifest: undefined, fidelity: {}, name: definition?.name || t.name, config: JSON.stringify(defaults, null, 2) } : t));
-  }
-  function changeTask(index: number, field: string, value: string) { setTasks(tasks.map((t, i) => i === index ? { ...t, [field]: value } : t)); }
-  return <Modal wide title={current ? 'Revise the experiment charter' : 'Start a research campaign'} description={current ? 'Changes create a new charter version. Earlier experiments retain their original problem definitions.' : 'Define the scientific question and boundaries. You can revise them as evidence develops.'} onClose={onClose}><form onSubmit={save}><div className="form-grid"><Field label="Campaign name" wide><input value={name} onChange={e => setName(e.target.value)} required maxLength={180} /></Field><Field label="Research objective" wide><textarea value={objective} onChange={e => setObjective(e.target.value)} rows={3} required /></Field><Field label="Compute cap (seconds)" hint="Total numerical execution budget across the campaign."><input type="number" value={compute} onChange={e => setCompute(e.target.value)} min="1" step="1" required /></Field><Field label="Implementation compute cap (seconds)" hint="Separate allocation for building and validating reusable implementations."><input type="number" min="0" step="1" value={implementationCompute} onChange={e => setImplementationCompute(e.target.value)} required /></Field><Field label="API spending cap (USD)" hint="Applies only to paid API calls. Codex uses your subscription allowance."><input type="number" value={llm} onChange={e => setLlm(e.target.value)} min="0" step="0.01" required /></Field><Field label="Validation reserve (seconds)" hint="Held back from ordinary optimization trials."><input type="number" value={reserve} onChange={e => setReserve(e.target.value)} min="0" max={compute} required /></Field><Field label="Research autonomy"><select value={autonomy} onChange={e => setAutonomy(e.target.value)}><option value="manual">Manual · researcher chooses each experiment</option><option value="guided">Guided · propose actions and request decisions</option><option value="delegated">Delegated · allow bounded, eligible probes</option></select></Field></div><div className="form-section-title"><h3>Problem configurations</h3><button type="button" className="button small secondary" onClick={() => setTasks([...tasks, { name: `Configuration ${tasks.length + 1}`, split: 'development', config: JSON.stringify(physicsDefaults, null, 2) }])}><Icon name="plus" size={15} />Add configuration</button></div><p className="help-text">Each instance declares its candidate domain, objective, constraints, and fidelity. Test instances remain governed by the study confirmation policy.</p><div className="task-editors">{tasks.map((task, index) => <div className="task-editor" key={index}><div className="form-grid"><Field label={`Configuration ${index + 1}`}><input value={task.name} onChange={e => changeTask(index, 'name', e.target.value)} required /></Field><Field label="Evidence split"><select value={task.split} onChange={e => changeTask(index, 'split', e.target.value)}><option value="development">Development</option><option value="selection">Selection</option><option value="test">Locked test</option></select></Field><Field label="Problem adapter"><select value={task.evaluator_manifest ? '__commission__' : task.problem_id || 'meent_grating'} onChange={e => selectProblem(index, e.target.value)}>{adapters.map(adapter => <option key={adapter.id} value={adapter.id}>{adapter.name}</option>)}<option value="__commission__">Declare a problem · evaluator needed</option></select></Field>{task.evaluator_manifest && <div className="wide"><ProblemManifestFields value={task.evaluator_manifest} onChange={manifest => setTasks(tasks.map((item, i) => i === index ? { ...item, evaluator_manifest: manifest, problem_id: manifest.id } : item))} /></div>}<Field label="Problem configuration (JSON)" hint="Use the selected adapter’s declared fields and units." wide><textarea className="code-input" value={task.config} rows={8} onChange={e => changeTask(index, 'config', e.target.value)} required spellCheck={false} /></Field></div>{tasks.length > 1 && <button type="button" className="text-button danger" onClick={() => setTasks(tasks.filter((_, i) => i !== index))}>Remove configuration</button>}</div>)}</div><ErrorNotice text={error} /><div className="modal-actions"><button className="button secondary" type="button" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy}>{busy ? 'Saving…' : current ? 'Save new version' : 'Create campaign'}<Icon name="arrow" size={16} /></button></div></form></Modal>;
-}
+export { CampaignForm } from './campaignSetup';
 
 export function HypothesisForm({ state, parent, onClose, onDone }: { state: State; parent?: Hypothesis; onClose: () => void; onDone: Done }) {
   const [campaign] = useState(state.campaign);
