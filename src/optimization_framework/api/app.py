@@ -101,6 +101,7 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     async def lifespan(app):
         if start_workers:
             workspace.start()
+            app.state.report_writer.recover()
         yield
         if start_workers:
             workspace.close()
@@ -111,6 +112,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     app.state.manager = coordinator
     from optimization_framework.api.agent_log import install as install_agent_log
     install_agent_log(app, workspace)
+    from optimization_framework.api.reports import install as install_reports
+    install_reports(app, workspace)
 
     @app.get("/api/campaigns/{campaign_id}/discovery")
     def discovery(campaign_id: str):
@@ -422,6 +425,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
             response["manager_commands"] = workspace.store.list("manager_command", current)
             from optimization_framework.implementations.bridge import public_grant
             response["implementation_jobs"] = [public_grant(g) for g in workspace.store.list("implementation_grant", current)]
+            from optimization_framework.api.reports import public_job
+            response["report_writer_jobs"] = [public_job(job) for job in workspace.store.list("report_writer_job", current)]
             response["implementation_library"] = workspace.implementations.catalog()
             response["budget"] = {"allocated_seconds": workspace.allocated_seconds(current),
                 "spent_seconds": sum(t.get("execution_seconds", 0) for t in response["trials"]),
@@ -430,7 +435,7 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
                 "implementation_api_committed_usd": workspace.implementations.api_committed(current),
                 "implementation_compute_committed_seconds": workspace.implementations.compute_committed(current),
                 "implementation_compute_cap_seconds": campaign.get("implementation_compute_budget_seconds", 0),
-                "subscription_calls": sum((r.get("usage") or {}).get("subscription_calls", 0) for r in response["research_runs"] + response["implementation_jobs"]),
+                "subscription_calls": sum((r.get("usage") or {}).get("subscription_calls", 0) for r in response["research_runs"] + response["implementation_jobs"] + response["report_writer_jobs"]),
                 "llm_cap_usd": campaign["llm_budget_usd"]}
         return response
 

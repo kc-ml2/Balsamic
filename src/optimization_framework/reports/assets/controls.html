@@ -1,0 +1,46 @@
+<a class="review-skip" href="#report-content">Skip to report</a>
+<header id="review-header" class="review-ui">
+  <div class="review-heading"><a id="review-home" href="/#reports">← Reports</a><span class="review-kicker">WRITING ROOM</span><span id="review-mode">Review draft</span></div>
+  <div class="review-title-row"><h1 id="review-title">Experiment report</h1><button id="review-toggle" aria-expanded="true" aria-controls="review-sidebar">Remarks <span id="review-count">0</span></button></div>
+  <p class="review-instruction">Select words in the report, then choose a mark. Leave everything else untouched.</p>
+  <div id="review-tools" role="toolbar" aria-label="Text review">
+    <button data-tier="good" class="tier-good" title="Keep this phrase (1)"><span>●</span> Very good <kbd>1</kbd></button>
+    <button data-tier="fine" class="tier-fine" title="Clear the selected highlight (2)"><span>○</span> Fine <kbd>2</kbd></button>
+    <button data-tier="poor" class="tier-poor" title="Improve wording or accuracy (3)"><span>▲</span> Poor <kbd>3</kbd></button>
+    <button data-tier="bad" class="tier-bad" title="Remove with editorial judgment (4)"><span>×</span> Bad <kbd>4</kbd></button>
+    <button id="review-note">+ Remark</button><button id="review-undo" disabled>Undo</button>
+    <span id="review-selection" aria-live="polite">No text selected</span>
+  </div>
+</header>
+<aside id="review-sidebar" class="review-ui" aria-label="Review remarks">
+  <div class="review-side-section">
+    <label for="review-focus">Writing focus</label><textarea id="review-focus" rows="3" maxlength="4000" placeholder="What should this article help the reader understand?"></textarea>
+    <p class="review-help">The writer's inferred focus appears here. Edit it and submit with your remarks to guide the next draft.</p>
+    <details id="review-editorial" hidden><summary>Writing notes &amp; evidence limits</summary><div id="review-editorial-details"></div></details>
+  </div>
+  <div class="review-side-section">
+    <h2>Your review</h2><p>Green keeps the phrase. Yellow asks for improvement. Red asks for removal. Unmarked text is flexible.</p>
+    <label for="review-comment">Overall remarks</label><textarea id="review-comment" rows="3" maxlength="20000" placeholder="Direction, audience, missing context…"></textarea>
+    <div id="review-save-status" role="status">Opening review…</div>
+    <button id="review-submit" class="review-primary">Submit feedback</button>
+    <p class="review-help" id="review-submit-help">Saves a review for the writer. Your draft changes only when you request a revision.</p>
+    <div id="review-receipt" aria-live="polite"></div>
+    <button id="review-revise" hidden>Revise draft with writer</button><div id="review-writer-status" role="status"></div>
+  </div>
+  <div class="review-side-section">
+    <details><summary>Share &amp; export</summary>
+      <p>Share one HTML file. Coworkers can highlight and comment offline, then send their reviewed HTML or feedback file back.</p>
+      <button id="review-share">Download review HTML</button>
+      <button id="review-feedback">Download feedback</button>
+      <label class="review-file-button" for="review-import">Import a review</label><input id="review-import" type="file" accept=".json,.html,text/html,application/json" hidden>
+      <p class="review-help">Import loads that review into this draft; Undo restores your previous marks. Submitted reviews remain saved separately.</p>
+      <div class="review-export-row"><button id="review-clean">Clean HTML</button><button id="review-md">Markdown</button><button id="review-print">Print / PDF</button></div>
+    </details>
+  </div>
+  <div id="review-revision" class="review-side-section" hidden><details><summary>What changed in this draft</summary><p id="review-change-summary"></p><div id="review-change-details"></div></details></div>
+  <div class="review-side-section"><h2>Marked passages <span id="review-totals"></span></h2><div id="review-annotations"><p>No marks yet. Select any passage to start.</p></div></div>
+</aside>
+<dialog id="review-note-dialog" class="review-ui">
+  <form method="dialog"><h2>Short remark</h2><blockquote id="review-note-quote"></blockquote><label for="review-note-text">Remark</label><textarea id="review-note-text" rows="4" maxlength="4000" placeholder="What should the writer know?"></textarea><div class="review-dialog-actions"><button value="cancel">Cancel</button><button id="review-note-save" value="save" class="review-primary">Save remark</button></div></form>
+</dialog>
+<div id="review-alert" class="review-ui" role="alert" hidden></div>
