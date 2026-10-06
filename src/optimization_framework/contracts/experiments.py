@@ -7,6 +7,10 @@ from pydantic import Field
 from .base import Contract
 from .problems import ProblemInstance
 
+# Trial stop causes ("stopped_by") that are a deliberate choice, not a budget,
+# deadline or host failure. "manager" is the campaign's lead agent.
+DELIBERATE_STOPS = frozenset({"researcher", "manager"})
+
 
 class ArtifactReference(Contract):
     id: str

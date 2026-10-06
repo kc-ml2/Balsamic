@@ -4,7 +4,7 @@ from optimization_framework.contracts.capabilities import OptimizerCapabilities
 from .lifecycle import AskTellAdapter, BoundedSearch
 from .config import TrainConfig
 from pydantic import TypeAdapter
-from dqn_meent.flrl_specs import METHODS as FOURIER_METHODS, PROPERTIES as FOURIER_PROPERTIES
+from .fourier_specs import METHODS as FOURIER_METHODS, PROPERTIES as FOURIER_PROPERTIES
 
 MASK_LIBRARY_METHODS = {"motif_surgery", "nested_fourier", "phenotype_de"}
 
@@ -67,7 +67,7 @@ for method in METHODS:
     method.update(contract="optimizer_v1", contract_version=1, batch_size=1, supports_failure_observations=False,
         parameter_schema={"type": "object", "properties": properties, "additionalProperties": False})
     method["execution_capabilities"] = OptimizerCapabilities(completion_units=["evaluation_requests", "optimizer_decisions"]
-        if name in {"dqn", "frozen_policy", "coordinate"} else ["evaluation_requests"]).model_dump(mode="json")
+        if name in {"dqn", "frozen_policy", "coordinate", "flrl_autograd_adam"} else ["evaluation_requests"]).model_dump(mode="json")
     if name == "dqn":
         from .policy import POLICY_FORMAT
         method["execution_capabilities"] = OptimizerCapabilities(completion_units=["evaluation_requests", "optimizer_decisions"],
@@ -99,7 +99,7 @@ def validate_parameters(name, instance, parameters, training=None, inference_reg
     else:
         check_parameters(parameters, method["parameter_schema"])
     if name in FOURIER_PROPERTIES:
-        from dqn_meent.flrl_specs import validate
+        from .fourier_specs import validate
         validate(name, instance, parameters)
     if name in MASK_LIBRARY_METHODS and (parameters.get("modes_x", 8) > 16 or parameters.get("modes_y", 4) > 8):
         raise ValueError("Mask-library Fourier modes exceed the supported basis")

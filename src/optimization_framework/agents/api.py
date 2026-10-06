@@ -19,6 +19,10 @@ class ToolCall(Context):
     arguments: dict = Field(default_factory=dict)
 
 
+class Notice(BaseModel):
+    agent_ids: list[str] = Field(max_length=1000)
+
+
 class ImplementationAssignment(BaseModel):
     role: str
     grant_id: str
@@ -29,8 +33,8 @@ class ImplementationAssignment(BaseModel):
     deadline_at: float
 
 
-def active_implementation_grant(workspace, grant, pi_id):
-    if grant["request"].get("agent_parent_id") != pi_id:
+def active_implementation_grant(workspace, grant, lead_id):
+    if grant["request"].get("agent_parent_id") != lead_id:
         return False
     if grant["status"] not in {"completed", "failed", "cancelled", "closed_uncertain"}:
         return True
@@ -44,7 +48,7 @@ def active_implementation_grant(workspace, grant, pi_id):
         and request.get("grant_id") == grant["id"]
         and request.get("workspace_id") == workspace.implementations.workspace_id
         and request.get("campaign_id") == grant["campaign_id"]
-        and request.get("agent_parent_id") == pi_id)
+        and request.get("agent_parent_id") == lead_id)
 
 
 def install(app, workspace):
@@ -63,6 +67,42 @@ def install(app, workspace):
         workspace.store.get(campaign_id, "campaign")
         return workspace.pi.view(campaign_id)
 
+    @app.get("/api/campaigns/{campaign_id}/agents/models")
+    def agent_models(campaign_id: str):
+        """Models a researcher may choose in dev mode: signed-in providers, this campaign's family only."""
+        from .controller import dev_profile
+        from .families import family_of
+        workspace.store.get(campaign_id, "campaign")
+        try:
+            status = workspace.pi.client.status()
+            workspace.pi.harness_status = status
+        except (ValueError, OSError):
+            status = workspace.pi.harness_status or {}
+        config = workspace.pi.configuration(campaign_id) or {}
+        family = config.get("llm_family")
+        models = [{**model, "family": family_of(model["provider"], model["id"])} for model in status.get("models", [])
+                  if isinstance(model, dict)]
+        return {"mode": "dev" if dev_profile() else "locked", "family": family, "default": (config.get("models") or {}).get("default"),
+                "providers": status.get("providers", {}),
+                "models": [m for m in models if family is None or m["family"] == family]}
+
+    @app.get("/api/v1/llm-usage")
+    def llm_usage(campaign_id: str, since: str | None = None, bucket: str = "hour"):
+        from . import usage
+        campaign = workspace.store.get(campaign_id, "campaign")
+        if bucket not in usage.BUCKETS:
+            raise HTTPException(422, "bucket must be hour or day")
+        config = workspace.pi.configuration(campaign_id) or {}
+        summary = usage.summary(workspace.store, campaign_id, since=since, bucket=bucket)
+        agent_charged = usage.charged(workspace.store, campaign_id)
+        implementation = workspace.implementations.api_committed(campaign_id)
+        summary["budget"] = {"cap_usd": campaign.get("llm_budget_usd"), "agent_charged_usd": agent_charged,
+            "implementation_committed_usd": implementation, "spent_usd": agent_charged + implementation}
+        summary["family"] = config.get("llm_family")
+        summary["agents"] = {a["id"]: {"role": a["role"], "status": a["status"], "provider": a.get("provider"),
+            "model": a["model"], "effort": a.get("reasoning_effort")} for a in workspace.store.list("agent_session", campaign_id)}
+        return summary
+
     @app.get("/api/campaigns/{campaign_id}/agents/records/{record_id}")
     def agent_record(campaign_id: str, record_id: str):
         entry = workspace.store.get_entry(record_id)
@@ -79,6 +119,11 @@ def install(app, workspace):
         workspace.store.get(campaign_id, "campaign")
         return workspace.pi.client.request("POST", "/v1/auth/start", {})
 
+    @app.post("/api/internal/pi/notify", dependencies=[Depends(authenticate)])
+    def notify(body: Notice):
+        # A hint only: the controller pulls the agents' authoritative state.
+        return workspace.pi.notify(body.agent_ids)
+
     @app.post("/api/internal/pi/tool", dependencies=[Depends(authenticate)])
     def tool(body: ToolCall):
         return gateway.call(**body.model_dump())
@@ -93,11 +138,11 @@ def install(app, workspace):
         campaign_id = grant["campaign_id"]
         config = workspace.pi.configuration(campaign_id)
         if not config or not config["enabled"] or config["status"] != "running":
-            raise ValueError("The campaign PI is not active")
+            raise ValueError("The campaign lead agent is not active")
         if body["deadline_at"] <= time.time():
             raise ValueError("Implementation allocation has expired")
-        if not active_implementation_grant(workspace, grant, config["pi_id"]):
-            raise ValueError("Implementation assignment is outside the active PI grant")
+        if not active_implementation_grant(workspace, grant, config["lead_id"]):
+            raise ValueError("Implementation assignment is outside the active lead agent's grant")
         frozen_spec = grant["request"]["spec"]
         if body["context"].get("spec", {}).get("mechanism") != frozen_spec.get("mechanism"):
             raise ValueError("Implementation mechanism differs from the frozen grant")
@@ -105,7 +150,7 @@ def install(app, workspace):
             None if role == "implementation_builder" else body["request_id"]])[:28]
         with workspace.lock, workspace.store.transaction():
             agent = workspace.pi.create_agent(campaign_id, role, body["instructions"], identity,
-                parent_id=config["pi_id"], grant_id=grant["id"], output_schema=body["output_schema"])
+                parent_id=config["lead_id"], grant_id=grant["id"], output_schema=body["output_schema"])
             # Submitted source was developed in a separate durable Pi session.
             # Its independent design/review calls do not consume numerical
             # execution time; the library enforces that allocation itself.

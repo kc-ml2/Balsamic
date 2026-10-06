@@ -1,6 +1,12 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
+// The matched-cost report loads on request, including after a reload.
+async function loadReport(page: Page) {
+  await page.getByRole('button', { name: 'Load matched-cost report' }).click();
+  await expect(page.getByRole('table', { name: 'Individual run results' })).toBeVisible();
+}
+
 async function comparisonWorkspace(page: Page, direction = 'maximize') {
   await page.addInitScript(() => { (window as any).EventSource = class extends EventTarget { close() {} }; });
   const campaign = { id: 'finalist-campaign', name: 'Optimizer selection', objective: 'Compare search procedures',
@@ -51,7 +57,7 @@ async function comparisonWorkspace(page: Page, direction = 'maximize') {
     return route.fulfill({ json: {} });
   });
   await page.goto('/#comparison');
-  await expect(page.getByRole('table', { name: 'Individual run results' })).toBeVisible();
+  await loadReport(page);
   return { state, report, commands, rejectNext: () => { reject = true; } };
 }
 
@@ -103,6 +109,7 @@ test('run and method group finalists persist, deduplicate prototypes, and can be
   expect(state.finalist_selections[0].trial_ids).toEqual(['trial-a1', 'trial-b1']);
   expect(commands[0].payload.expected_procedure_ids).toEqual({ 'trial-a1': 'procedure-16', 'trial-b1': 'procedure-32' });
   await page.reload();
+  await loadReport(page);
   await expect(page.locator('tr[data-trial-id="trial-a1"]').getByRole('button', { name: 'Unmark finalist' })).toBeVisible();
   await page.locator('tr[data-trial-id="trial-a1"]').getByRole('button', { name: 'Unmark finalist' }).click();
   await expect(page.getByLabel('Finalist shortlist')).toContainText('1 finalist runs marked');
@@ -132,6 +139,7 @@ test('a method group with an ineligible replicate can still be marked and unmark
   const workspace = await comparisonWorkspace(page);
   workspace.report.groups[0].trials.find(trial => trial.id === 'trial-a2')!.finalist_eligible = false;
   await page.reload();
+  await loadReport(page);
   await page.getByLabel('Results table', { exact: true }).selectOption('methods');
   const group = page.locator('tr[data-method-id="386c732e3a"]');
   await group.getByRole('button', { name: 'Mark method group' }).click();
@@ -149,6 +157,7 @@ test('method details retain differing procedure source and typed parameter value
   b.procedure.scientific_source_hash = 'source-b';
   b.method.parameters.restart_patience = '16';
   await page.reload();
+  await loadReport(page);
   await page.getByLabel('Compare run trial-a1', { exact: true }).check();
   await page.getByLabel('Compare run trial-b1', { exact: true }).check();
   await page.getByRole('button', { name: 'Inspect / compare selected' }).click();

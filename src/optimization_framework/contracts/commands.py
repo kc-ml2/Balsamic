@@ -7,8 +7,8 @@ from .base import Contract
 from .requests import CampaignUpdate, ControlInput, ValidationInput, ReviewInput, DecisionInput
 from optimization_framework.implementations.models import EvaluatorSpec, EvaluatorPackage, EvaluatorCheckSpec, OptimizerCheckSpec
 
-Operation = Literal["agent.activate", "agent.message", "agent.control", "agent.rollback", "fixed_mask.run", "campaign.create", "campaign.update", "context.edit", "issue.resolve", "trial.create", "trial.control", "trial.validate", "draft.save", "draft.launch", "reproduction.draft", "reproduction.compare", "study.create", "study.nominate", "finalist.set", "study.freeze_template", "study.activate", "validation.run", "validation.require", "validation.execute", "validation.waive",
-    "models.configure", "discovery.start", "discovery.control", "discovery.amend", "discovery.retry", "discovery.assessment.save", "discovery.assessment.launch", "discovery.assessment.decide",
+Operation = Literal["agent.activate", "agent.message", "agent.control", "agent.rollback", "agent.configure", "fixed_mask.run", "campaign.create", "campaign.update", "context.edit", "issue.resolve", "trial.create", "trial.control", "trial.extension_request", "trial.validate", "draft.save", "draft.launch", "reproduction.draft", "reproduction.compare", "study.create", "study.nominate", "finalist.set", "study.freeze_template", "study.activate", "study.race.create", "study.race.control", "study.race.decide", "validation.run", "validation.require", "validation.execute", "validation.waive",
+    "models.configure", "discovery.start", "discovery.control", "discovery.amend", "discovery.retry", "discovery.assessment.save", "discovery.assessment.launch", "discovery.assessment.decide", "asset.snapshot",
     "validation.revoke_waiver", "context.import", "inference.run", "asset.reuse", "asset.import_reference_set", "cost.reconcile", "comparison.report", "finding.record", "implementation.commission",
     "implementation.reference", "implementation.bind_builtin", "implementation.attach", "evaluator.commission", "evaluator.attach", "implementation.control", "implementation.revalidate", "implementation.reuse", "implementation.resolve_runtime", "bundle.export", "bundle.inspect", "bundle.publish", "research.start", "research.retry", "research.control", "decision.resolve", "decision.refresh", "source.record", "source.ingest", "hypothesis.create", "hypothesis.review", "hypothesis.status", "hypothesis.nominate", "literature.search", "confirmation.schedule", "confirmation.validate", "confirmation.release"]
 
@@ -53,6 +53,14 @@ class FinalistSetInput(Contract):
 class TrialControlInput(ControlInput):
     trial_id: str
     expected_control_revision: int = Field(ge=0)
+
+
+class TrialExtensionRequestInput(Contract):
+    """The lead's request for more trial budget; only the researcher can approve it."""
+    trial_id: str
+    additional_seconds: float = Field(gt=0, le=86400)
+    additional_evaluations: int = Field(default=0, ge=0, le=10000000)
+    rationale: str = Field(min_length=1, max_length=5000, description="Why the extra budget would change a decision")
 
 
 class TrialValidationInput(ValidationInput):
@@ -165,6 +173,11 @@ class ReuseInput(Contract):
     intended_use: Literal["optimizer_input", "manager_evidence", "procedure"]
     rationale: str = Field(min_length=1)
     consequences: dict[str, Any] = Field(default_factory=dict)
+
+
+class AssetSnapshotInput(Contract):
+    trial_id: str
+    observation_id: str
 
 
 class WaiverInput(Contract):

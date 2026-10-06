@@ -108,7 +108,7 @@ def _share_decision_context(context):
             # This turn explicitly selects recommendations to reconsider.
             # Other unanswered informational questions stay visible, but their
             # repeated model analyses are retrievable history, not authority.
-            if not current.get("action_id") and not current.get("incremental_solver_calls"):
+            if not current.get("action_id") and current.get("incremental_solver_calls") is None:
                 omitted = [key for key in ("rationale", "context") if key in current]
                 if omitted:
                     for key in omitted:
@@ -171,7 +171,7 @@ def _index_informational_decision_history(context, question, target_id):
     selected.add(target_id)
     omitted = {identity for identity, row in decisions.items()
         if row.get("status") == "pending" and not row.get("action_id")
-        and not row.get("incremental_solver_calls") and identity not in selected and identity not in question}
+        and row.get("incremental_solver_calls") is None and identity not in selected and identity not in question}
     omitted = {identity for identity in omitted if not identity.startswith("reconcile_")
         and not any(option.get("id") == "close_reserved" for option in decisions[identity].get("options", []))}
     if not omitted:

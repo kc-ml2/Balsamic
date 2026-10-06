@@ -252,7 +252,14 @@ class ImplementationService:
             raise ValueError("Unknown implementation control")
 
     def _loop(self):
+        # Jobs are written only by this process, so an unchanged write count
+        # means no job became queued; avoid decoding MB-scale job records 5x/s.
+        seen = None
         while not self.stopping.wait(.2):
+            revision = self.store.revision("implementation_job")
+            if revision == seen:
+                continue
+            seen = revision
             queued = next((j for j in self.store.list("implementation_job") if j["status"] == "queued"), None)
             if queued:
                 self.run_job(queued["id"])

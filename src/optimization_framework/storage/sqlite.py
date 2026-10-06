@@ -1,7 +1,9 @@
 """Application-owned SQLite records and an append-only event stream."""
 from __future__ import annotations
 
+from collections import Counter
 from contextlib import contextmanager
+import copy
 from datetime import datetime, timezone
 import json
 from pathlib import Path
@@ -29,6 +31,10 @@ class Store:
         self.lock = threading.RLock()
         self._local = threading.local()
         self.event_observer = None
+        # This process owns the workspace (service.lock), so per-kind write
+        # counts are enough to reuse derived trial queries between writes.
+        self._revisions = Counter()
+        self._derived = {}
         with self.connection() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -50,6 +56,11 @@ class Store:
             db.execute("INSERT OR IGNORE INTO schema_migrations VALUES (1, ?)", (now(),))
             db.execute("CREATE TABLE IF NOT EXISTS cost_positions (source_id TEXT NOT NULL, ordinal INTEGER NOT NULL, cost_event_id TEXT NOT NULL UNIQUE, UNIQUE(source_id, ordinal))")
             db.execute("CREATE INDEX IF NOT EXISTS records_trial_status ON records(json_extract(data,'$.status'), campaign_id) WHERE kind='trial'")
+            db.execute("CREATE INDEX IF NOT EXISTS records_agent_run_agent ON records(json_extract(data,'$.agent_id')) WHERE kind='agent_run'")
+            # Background loops look up a campaign's latest event (optionally of a kind
+            # prefix) every few hundred ms; without these they scan the whole journal.
+            db.execute("CREATE INDEX IF NOT EXISTS events_campaign ON events(campaign_id)")
+            db.execute("CREATE INDEX IF NOT EXISTS events_campaign_kind ON events(campaign_id, kind)")
             if not db.execute("SELECT 1 FROM schema_migrations WHERE version=2").fetchone():
                 for row in db.execute("SELECT data FROM records WHERE kind='cost_event'"):
                     event = json.loads(row[0])
@@ -79,6 +90,7 @@ class Store:
             db.row_factory = sqlite3.Row
             self._local.connection = db
             self._local.depth = 0
+            self._local.written = set()
             try:
                 yield db
                 db.commit()
@@ -88,6 +100,8 @@ class Store:
             finally:
                 self._local.connection = None
                 db.close()
+                # Commit or rollback, the outcome is now visible; invalidate again.
+                self._revisions.update(self._local.written)
 
     @contextmanager
     def transaction(self):
@@ -134,6 +148,8 @@ class Store:
                         db.execute("INSERT INTO cost_positions VALUES (?,?,?)", (record["source_id"], record["ordinal"], record["id"]))
                     except sqlite3.IntegrityError as exc:
                         raise ValueError("A physical cost event already owns this source ordinal") from exc
+                self._local.written.add(kind)
+                self._revisions[kind] += 1
                 db.execute("INSERT INTO records VALUES (?, ?, ?, ?) ON CONFLICT(id) "
                            "DO UPDATE SET data=excluded.data, campaign_id=excluded.campaign_id",
                            (record["id"], kind, record.get("campaign_id"), json.dumps(record, allow_nan=False)))
@@ -179,6 +195,107 @@ class Store:
             rows = db.execute(query, args).fetchall()
         return [json.loads(row["data"]) for row in rows]
 
+    def revision(self, *kinds):
+        """In-process write count for record kinds; equal values mean no writes since."""
+        with self.lock:
+            return tuple(self._revisions[kind] for kind in kinds)
+
+    def _derived_trials(self, key, compute):
+        """Trial records hold MB-scale archives; idle maintenance must not reparse them."""
+        with self.lock:
+            if self.in_transaction:
+                return compute()
+            stamp = self._revisions["trial"]
+            cached = self._derived.get(key)
+            if cached is None or cached[0] != stamp:
+                cached = (stamp, compute())
+                self._derived[key] = cached
+            return copy.deepcopy(cached[1])
+
+    def list_trial_costs(self, campaign_id: str | None = None, *, exclude: str | None = None) -> list[dict]:
+        return self._derived_trials(("costs", campaign_id, exclude), lambda: self._list_trial_costs(campaign_id, exclude))
+
+    def _list_trial_costs(self, campaign_id, exclude):
+        """Read accounting fields without decoding numerical design archives."""
+        query = """SELECT id, campaign_id,
+                   json_extract(data,'$.status') AS status,
+                   json_extract(data,'$.execution_grant_id') AS execution_grant_id,
+                   json_extract(data,'$.wall_seconds') AS wall_seconds,
+                   CASE WHEN json_type(data,'$.execution_seconds') IS NULL THEN 0
+                        ELSE json_extract(data,'$.execution_seconds') END AS execution_seconds,
+                   CASE WHEN json_type(data,'$.execution_seconds_upper_bound') IS NULL THEN 0
+                        ELSE json_extract(data,'$.execution_seconds_upper_bound') END AS execution_seconds_upper_bound,
+                   json_extract(data,'$.isolation_policy') AS isolation_policy,
+                   CASE WHEN json_type(data,'$.progress.elapsed_seconds') IS NULL THEN 0
+                        ELSE json_extract(data,'$.progress.elapsed_seconds') END AS progress_seconds,
+                   CASE WHEN json_type(data,'$.result.elapsed_seconds') IS NULL THEN 0
+                        ELSE json_extract(data,'$.result.elapsed_seconds') END AS result_seconds
+                   FROM records WHERE kind='trial'"""
+        args = []
+        if campaign_id is not None:
+            query += " AND campaign_id=?"
+            args.append(campaign_id)
+        if exclude is not None:
+            query += " AND id<>?"
+            args.append(exclude)
+        query += " ORDER BY rowid"
+        with self.connection() as db:
+            rows = db.execute(query, args).fetchall()
+        result = []
+        for row in rows:
+            trial = dict(row)
+            policy = trial["isolation_policy"]
+            trial["isolation_policy"] = json.loads(policy) if isinstance(policy, str) else policy
+            trial["progress"] = {"elapsed_seconds": trial.pop("progress_seconds")}
+            trial["result"] = {"elapsed_seconds": trial.pop("result_seconds")}
+            result.append(trial)
+        return result
+
+    def list_trial_headers(self, campaign_id: str | None = None) -> list[dict]:
+        return self._derived_trials(("headers", campaign_id), lambda: self._list_trial_headers(campaign_id))
+
+    def _list_trial_headers(self, campaign_id):
+        """Metadata sufficient to find a trial's scalar journal and label it."""
+        query = """SELECT id, campaign_id, json_extract(data,'$.algorithm') AS algorithm,
+                   json_extract(data,'$.seed') AS seed FROM records WHERE kind='trial'"""
+        args = []
+        if campaign_id is not None:
+            query += " AND campaign_id=?"
+            args.append(campaign_id)
+        query += " ORDER BY rowid"
+        with self.connection() as db:
+            return [dict(row) for row in db.execute(query, args).fetchall()]
+
+    def list_compact_trials(self, campaign_id: str | None = None) -> list[dict]:
+        """Trim duplicated masks in SQLite before allocating Python objects.
+
+        Preserve the state API's geometry access: progress keeps best_design;
+        result keeps it only when progress is empty or absent. Full immutable
+        experiment records remain available through get() and list().
+        """
+        query = """SELECT json_remove(
+                   CASE WHEN json_type(data,'$.progress')='object'
+                             AND json_extract(data,'$.progress')<>'{}'
+                        THEN json_remove(data,'$.result.best_design') ELSE data END,
+                   '$.progress.archive','$.progress.best_candidate',
+                   '$.result.archive','$.result.best_candidate') AS data
+                   FROM records WHERE kind='trial'"""
+        args = []
+        if campaign_id is not None:
+            query += " AND campaign_id=?"
+            args.append(campaign_id)
+        query += " ORDER BY rowid"
+        with self.connection() as db:
+            rows = db.execute(query, args).fetchall()
+        return [json.loads(row["data"]) for row in rows]
+
+    def list_agent_runs(self, agent_id: str) -> list[dict]:
+        """One agent's runs in commit order, without decoding every campaign run."""
+        with self.connection() as db:
+            rows = db.execute("SELECT data FROM records INDEXED BY records_agent_run_agent "
+                              "WHERE kind='agent_run' AND json_extract(data,'$.agent_id')=? ORDER BY rowid", (agent_id,)).fetchall()
+        return [json.loads(row["data"]) for row in rows]
+
     def list_trials_in_status(self, statuses, campaign_id: str | None = None) -> list[dict]:
         statuses = tuple(statuses)
         if not statuses:
@@ -195,6 +312,9 @@ class Store:
         return [json.loads(row["data"]) for row in rows]
 
     def trials_requiring_capture(self) -> list[dict]:
+        return self._derived_trials(("capture",), self._trials_requiring_capture)
+
+    def _trials_requiring_capture(self) -> list[dict]:
         query = """SELECT data FROM records WHERE kind='trial'
                    AND json_extract(data,'$.execution_contract')=1
                    AND json_extract(data,'$.status') NOT IN ('queued','running','pausing','stopping')

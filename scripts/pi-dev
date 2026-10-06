@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Pi CLI with Balsamic's dev profile: the harness's pinned Pi, the versioned
+# configuration in agent-harness/profiles/dev, and keys from the secrets file.
+# Model and thinking level are runtime choices (/model, Shift+Tab, --model, --thinking).
+set -euo pipefail
+repo_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+secrets="${BALSAMIC_SECRETS:-$HOME/.config/balsamic/secrets.env}"
+if [ -f "$secrets" ]; then set -a; . "$secrets"; set +a; fi
+export PI_CODING_AGENT_DIR="$repo_dir/agent-harness/profiles/dev"
+export PI_CODING_AGENT_SESSION_DIR="${PI_CODING_AGENT_SESSION_DIR:-$repo_dir/runs/pi-dev/sessions}"
+exec "$repo_dir/agent-harness/node_modules/.bin/pi" "$@"

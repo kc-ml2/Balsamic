@@ -56,6 +56,13 @@ def configuration(path, no_llm=False):
     for key in ("directory", "frontend_directory"):
         value = Path(config[key]).expanduser()
         config[key] = str((ROOT / value).resolve())
+    # Optional Pi dev profile (an agent directory, e.g. agent-harness/profiles/dev) and
+    # the provider-key file read only by the Pi harness process.
+    if config.get("pi_profile"):
+        config["pi_profile"] = str((ROOT / Path(config["pi_profile"]).expanduser()).resolve())
+        if not (Path(config["pi_profile"]) / "settings.json").is_file():
+            raise LauncherError(f"Pi profile has no settings.json: {config['pi_profile']}")
+        config["secrets_file"] = str(Path(config.get("secrets_file") or "~/.config/balsamic/secrets.env").expanduser())
     ports = [config["workspace_port"], config["implementation_port"]]
     if config.get("pi_port") is not None:
         ports.append(config["pi_port"])
@@ -200,6 +207,9 @@ def service_environment(config):
             GRATING_PI_WORKSPACE_URL=f"http://127.0.0.1:{config['workspace_port']}",
             GRATING_PI_DIRECTORY=str(Path(config["directory"]) / "pi"),
             GRATING_PI_TOKEN_FILE=str(Path(config["directory"]) / "pi/service.token"))
+        if config.get("pi_profile"):
+            # Every service learns dev mode and its profile defaults; keys go only to the harness.
+            env["GRATING_PI_PROFILE"] = config["pi_profile"]
     return env
 
 
@@ -473,9 +483,25 @@ class Servers:
         print(f"Data: {self.config['directory']}\nLogs: {self.runtime}")
 
 
+def read_secrets(path):
+    """KEY=VALUE lines (optionally quoted); comments and blank lines are ignored."""
+    values = {}
+    for line in Path(path).read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.removeprefix("export ").split("=", 1)
+        values[key.strip()] = value.strip().strip("'\"")
+    return values
+
+
 def serve(role, config):
     if role == "pi":
-        os.execvpe("node", ["node", str(ROOT / "agent-harness/dist/server.js")], service_environment(config))
+        env = service_environment(config)
+        if config.get("pi_profile"):
+            if Path(config["secrets_file"]).is_file():
+                env.update(read_secrets(config["secrets_file"]))
+        os.execvpe("node", ["node", str(ROOT / "agent-harness/dist/server.js")], env)
     import uvicorn
     directory = Path(config["directory"])
     if role == "library":

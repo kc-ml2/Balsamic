@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+from copy import deepcopy
 from typing import Any
 
 from optimization_framework.contracts.base import content_hash
@@ -13,6 +14,7 @@ from optimization_framework.contracts.problems import (
 PROBLEM_ID = "meent_2d_dual_polarization_deflector"
 DEFINITION_VERSION = "flrl-2d-v1"
 EVALUATOR_VERSION = "meent-0.13.2-flrl-2d-v1"
+ORDER_CONVERGENCE_RECIPE = "meent_2d_order_convergence:v1"
 
 CONFIGURATION_SCHEMA = {
     "type": "object",
@@ -57,6 +59,28 @@ OBJECTIVES = [
         "tm_plus1_transmission", "min_plus1_transmission",
     )
 ]
+CONVERGENCE_OBJECTIVES = tuple(objective.name for objective in OBJECTIVES[:3])
+ORDER_CONVERGENCE_SCHEMA = {
+    "title": "2D RCWA order and repeat consistency",
+    "assertion_kind": "solution_fidelity",
+    "type": "object", "additionalProperties": False,
+    "properties": {
+        "fidelities": {
+            "title": "Increasing 2D RCWA fidelities", "type": "array",
+            "minItems": 2, "maxItems": 8, "items": FIDELITY_SCHEMA,
+            "default": [{"rcwa_order_x": x, "rcwa_order_y": y}
+                        for x, y in ((10, 5), (12, 6), (14, 7))],
+        },
+        "absolute_tolerance": {"type": "number", "exclusiveMinimum": 0,
+                               "maximum": .005, "default": .005},
+        "energy_tolerance": {"type": "number", "exclusiveMinimum": 0,
+                             "maximum": .001, "default": .001},
+        "repeat_tolerance": {"type": "number", "exclusiveMinimum": 0,
+                             "maximum": 1e-6, "default": 1e-6},
+        "repeats": {"title": "Evaluations at the highest fidelity", "type": "integer",
+                    "minimum": 2, "maximum": 8, "default": 2},
+    },
+}
 
 
 def _number(value: Any, name: str, *, positive: bool = False) -> float:
@@ -82,6 +106,8 @@ class Meent2DProblem:
             configuration_schema=CONFIGURATION_SCHEMA, fidelity_schema=FIDELITY_SCHEMA,
             capabilities=["binary", "binary_forward", "scalar_objective"],
             resources={"cpu_threads": 1},
+            validation_recipes=[ORDER_CONVERGENCE_RECIPE],
+            recipe_schemas={ORDER_CONVERGENCE_RECIPE: deepcopy(ORDER_CONVERGENCE_SCHEMA)},
         )
 
     def resolve(self, configuration: dict, fidelity: dict | None = None) -> ProblemInstance:
@@ -142,6 +168,128 @@ class Meent2DProblem:
         # explicit RCWA orders were supplied.
         embedded = {key: configuration[key] for key in FIDELITY_SCHEMA["required"] if key in configuration}
         return self.resolve(configuration, embedded or {"rcwa_order_x": 1, "rcwa_order_y": 1})
+
+    def recipe_parameters(self, instance, recipe_id, parameters):
+        if recipe_id != ORDER_CONVERGENCE_RECIPE:
+            raise ValueError(f"Unknown 2D MEENT recipe: {recipe_id}")
+        if not isinstance(parameters, dict) or set(parameters) - set(ORDER_CONVERGENCE_SCHEMA["properties"]):
+            raise ValueError("2D convergence requires explicit fidelity pairs; 1D orders are unsupported")
+        values = {name: deepcopy(schema["default"])
+                  for name, schema in ORDER_CONVERGENCE_SCHEMA["properties"].items()}
+        values.update(deepcopy(parameters))
+        fidelities = values["fidelities"]
+        if not isinstance(fidelities, list) or not 2 <= len(fidelities) <= 8:
+            raise ValueError("2D convergence requires two through eight distinct fidelity pairs")
+        resolved = []
+        for fidelity in fidelities:
+            if not isinstance(fidelity, dict):
+                raise ValueError("Each 2D fidelity requires both rcwa_order_x and rcwa_order_y")
+            current = self.resolve(instance.configuration, fidelity).fidelity
+            if resolved and (current == resolved[-1] or any(
+                    current[key] < resolved[-1][key] for key in FIDELITY_SCHEMA["required"])):
+                raise ValueError("2D fidelity pairs must increase without lowering either RCWA order")
+            resolved.append(current)
+        values["fidelities"] = resolved
+        for name in ("absolute_tolerance", "energy_tolerance", "repeat_tolerance"):
+            values[name] = _number(values[name], name, positive=True)
+            if values[name] > ORDER_CONVERGENCE_SCHEMA["properties"][name]["maximum"]:
+                raise ValueError(f"{name} cannot weaken the reviewed 2D validation threshold")
+        values["repeats"] = _integer(values["repeats"], "repeats", minimum=2)
+        if values["repeats"] > 8:
+            raise ValueError("At most eight highest-fidelity repetitions are supported")
+        return values
+
+    def plan_recipe(self, instance, recipe_id, parameters, subjects):
+        values = self.recipe_parameters(instance, recipe_id, parameters)
+        if not subjects:
+            raise ValueError("Select actual binary 2D masks for order convergence")
+        candidates = [instance.candidate_schema.canonicalize(candidate) for candidate in subjects]
+        instances = [self.resolve(instance.configuration, fidelity) for fidelity in values["fidelities"]]
+        cases = []
+        for subject_index, candidate in enumerate(candidates):
+            for fidelity_index, problem in enumerate(instances):
+                repeats = values["repeats"] if fidelity_index == len(instances) - 1 else 1
+                for repeat in range(repeats):
+                    cases.append({"problem": problem.model_dump(mode="json"), "candidate": candidate,
+                                  "subject_index": subject_index, "fidelity_index": fidelity_index,
+                                  "repeat": repeat})
+        return {"subjects": candidates, "cases": cases,
+                "validation_rule": {"kind": "solution_fidelity", "subject": "solution",
+                    "evidence_requirements": ["Every declared 2D fidelity and repeat completed",
+                        "Mean, TE and TM agree at the final two distinct fidelities",
+                        "Both polarizations conserve energy", "Highest-fidelity repeats agree"]}}
+
+    def summarize_recipe(self, recipe, observations):
+        if recipe.get("recipe_id") != ORDER_CONVERGENCE_RECIPE:
+            raise ValueError("Unknown 2D MEENT recipe summary")
+        parameters = self.recipe_parameters(ProblemInstance(**recipe["cases"][0]["problem"]),
+                                            recipe["recipe_id"], recipe["parameters"])
+        findings = []
+        for subject_index, candidate in enumerate(recipe["subjects"]):
+            expected = [(index, case) for index, case in enumerate(recipe["cases"])
+                        if case["subject_index"] == subject_index]
+            rows, missing, invalid = [], [], []
+            for index, case in expected:
+                observation = observations[index] if index < len(observations) else None
+                if not isinstance(observation, dict):
+                    missing.append(f"case_{index}")
+                    continue
+                problem = ProblemInstance(**case["problem"])
+                if (observation.get("status") != "ok" or observation.get("proposal_id") != f"case_{index}"
+                        or observation.get("fidelity") != problem.fidelity
+                        or observation.get("evaluator_identity") != problem.evaluation_identity
+                        or observation.get("candidate") != candidate):
+                    missing.append(f"case_{index}: matching successful observation required")
+                    continue
+                objectives = observation.get("objectives", {})
+                energy = observation.get("metadata", {}).get("meent", {}).get("energy_totals")
+                if (not isinstance(objectives, dict) or any(name not in objectives for name in CONVERGENCE_OBJECTIVES)
+                        or not isinstance(energy, list) or len(energy) != 2):
+                    missing.append(f"case_{index}: mean, TE, TM and both energy totals required")
+                    continue
+                try:
+                    scores = {name: _number(objectives[name], name) for name in CONVERGENCE_OBJECTIVES}
+                    totals = [_number(total, "polarization energy total") for total in energy]
+                except ValueError:
+                    invalid.append(f"case_{index}: nonfinite physical measurement")
+                    continue
+                if (any(score < -1e-6 or score > 1 + 1e-6 for score in scores.values())
+                        or abs(scores[CONVERGENCE_OBJECTIVES[0]] -
+                               (scores[CONVERGENCE_OBJECTIVES[1]] + scores[CONVERGENCE_OBJECTIVES[2]]) / 2) > 1e-9):
+                    invalid.append(f"case_{index}: invalid polarization objective")
+                rows.append({"fidelity": problem.fidelity, "fidelity_index": case["fidelity_index"],
+                             "repeat": case["repeat"], "observation_id": observation.get("id"),
+                             "objectives": scores, "energy_totals": totals,
+                             "costs": deepcopy(observation.get("costs", {}))})
+            complete = len(rows) == len(expected) and not missing
+            groups = [[row for row in rows if row["fidelity_index"] == index]
+                      for index in range(len(parameters["fidelities"]))]
+            differences = {name: abs(groups[-1][0]["objectives"][name] - groups[-2][0]["objectives"][name])
+                           for name in CONVERGENCE_OBJECTIVES} if groups[-1] and groups[-2] else None
+            repeat_differences = {name: max(row["objectives"][name] for row in groups[-1]) -
+                                 min(row["objectives"][name] for row in groups[-1])
+                                 for name in CONVERGENCE_OBJECTIVES} if len(groups[-1]) >= 2 else None
+            energy_error = max((abs(total - 1) for row in rows for total in row["energy_totals"]), default=None)
+            converged = bool(complete and not invalid and differences is not None and repeat_differences is not None
+                             and max(differences.values()) <= parameters["absolute_tolerance"]
+                             and max(repeat_differences.values()) <= parameters["repeat_tolerance"]
+                             and energy_error <= parameters["energy_tolerance"])
+            verdict = "passed" if converged else "failed" if complete or invalid else "inconclusive"
+            findings.append({"design_index": subject_index, "design": candidate, "complete": complete,
+                "converged": converged, "verdict": verdict,
+                "numerical_status": "converged" if converged else "unconverged" if complete else "incomplete",
+                "last_two_absolute_differences": differences,
+                "repeat_max_absolute_differences": repeat_differences, "max_energy_error": energy_error,
+                "highest_fidelity": parameters["fidelities"][-1], "parameters": parameters,
+                "observations": rows, "missing_evidence": missing, "invalid_evidence": invalid,
+                "rationale": "Final two 2D fidelities, both polarization energies and repeated solves satisfy the frozen thresholds."
+                    if converged else "2D fidelity, energy and repeat consistency have not all been established."})
+        complete = len(observations) == len(recipe["cases"]) and all(item["complete"] for item in findings)
+        verdict = ("passed" if complete and all(item["verdict"] == "passed" for item in findings)
+                   else "failed" if any(item["verdict"] == "failed" for item in findings) else "inconclusive")
+        return {"kind": "solution_fidelity", "recipe_id": recipe["recipe_id"], "complete": complete,
+                "verdict": verdict, "subjects": findings,
+                "note": "Consistency over the tested 2D truncations is separate from independent evaluator correctness and scientific confirmation."}
 
 
 class Meent2DEvaluator:

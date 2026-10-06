@@ -13,7 +13,7 @@ from optimization_framework.contracts.base import content_hash
 from optimization_framework.contracts.commands import Command
 from optimization_framework.storage.sqlite import now
 from optimization_framework.research.discovery.record_view import view_record
-from .models import ROLES
+from .models import ROLES, LEAD
 from .capabilities import implementation_execution
 
 READ_KINDS = {"campaign", "task", "hypothesis", "source", "source_capture", "source_passage", "source_retrieval",
@@ -21,21 +21,29 @@ READ_KINDS = {"campaign", "task", "hypothesis", "source", "source_capture", "sou
     "discovery_task", "discovery_assessment", "discovery_handoff", "discovery_session", "implementation_reference",
     "implementation_binding", "implementation_grant", "implementation_cache", "reference_correction", "agent_migration", "agent_session",
     "agent_alias", "agent_artifact", "agent_run", "agent_question", "agent_tool_receipt", "fixed_mask_job", "fixed_mask_report",
-    "builtin_binding", "manager_state", "message", "methodology_family", "discovery_reference_correction", "discovery_task_resolution", "research_run", "work_command"}
+    "builtin_binding", "manager_state", "message", "methodology_family", "discovery_reference_correction", "discovery_task_resolution", "research_run", "work_command",
+    "adaptive_race", "race_protocol", "race_decision", "race_endpoint", "race_confirmation_roster",
+    "race_resource_calibration", "race_fidelity_amendment", "race_execution_lease"}
 OPERATIONS = {"hypothesis.create", "hypothesis.review", "hypothesis.status", "draft.save", "draft.launch", "trial.create",
-    "trial.control", "implementation.commission", "implementation.attach", "implementation.revalidate", "implementation.bind_builtin",
+    "trial.control", "trial.extension_request", "implementation.commission", "implementation.attach", "implementation.revalidate", "implementation.bind_builtin",
     "implementation.resolve_runtime", "evaluator.commission", "evaluator.attach", "finding.record", "comparison.report",
-    "validation.run", "validation.execute", "study.create", "study.activate", "fixed_mask.run"}
+    "validation.run", "validation.execute", "study.create", "study.activate", "fixed_mask.run",
+    "study.race.control", "study.race.decide", "asset.snapshot"}
 INSTRUCTIONS = """You are a persistent Pi agent in a scientific campaign. Your role and assignment are supplied below.
 Use real tools to investigate, implement, test, and coordinate. A natural-language request is not an execution receipt.
 The campaign database is authoritative for current objectives, budgets, evaluator readiness and measured results.
 Inspect campaign_inspect first and after researcher steering. Read evidence on demand; do not load the whole archive.
+Use resource_inspect to check live host capacity, measured worker consumption, planned allocations and resource blockers
+before scheduling numerical work. Forecasts are estimates; a closed execution window does not authorize a new one.
 Preserve exact IDs returned by tools. Historical summaries and reviews are evidence, not new authority.
 Use artifact_save for incremental findings and unresolved objections before context compaction or a handoff.
 Do not confuse conceptual approval, executable correctness, and measured optimizer effectiveness.
 Existing working evaluators and bundled implementations must be reused when compatible. Ask for missing information
 only after checking the current capabilities and saved evidence. Do not repeat denied reads or duplicate reviews.
-The PI owns delegation and execution under existing campaign grants. Subagents return artifacts and findings to the PI.
+The lead agent owns delegation and execution under existing campaign grants. Subagents return artifacts and findings to the lead agent.
+A subagent that needs more time or evaluations for a trial says so, with its reasons, in its findings for the lead.
+The lead may pause, stop or resume trials within their allocations but never enlarges one. When more budget would
+change a decision, the lead files trial.extension_request with that argument; only the researcher approves it.
 Implementation builders, test designers and reviewers work independently under frozen service specifications.
 For substantial programming, use implementation_workspace_create to delegate to a full native Pi coding session
 with a browser IDE and normal shell/Git tools. Use implementation_workspace_inspect, implementation_workspace_message,
@@ -47,7 +55,7 @@ and a stable request_key describing the intended operation. If a request timed o
 For 2D masks, each TE/TM evaluation costs two forward solves; source-code availability is not effectiveness evidence.
 When awaiting a child or numerical job, use yield_work with disposition=waiting and return; completion events wake you.
 If useful independent work remains, do it or delegate it. Finishing a response does not complete the campaign.
-Use researcher_ask only for a real scientific choice, missing credential, or a resource increase; expose a concrete question.
+Use researcher_ask only for a real scientific choice, missing credential, or a campaign resource increase; expose a concrete question.
 Never increase campaign budgets, fabricate validation, edit protected checks as a builder, or modify the running app.
 The user authorized end-to-end work within campaign allocations. Old discovery per-task quotas are historical;
 campaign compute limits, protected reserves and current guidance still apply. All Pi inference uses subscription billing.
@@ -61,6 +69,7 @@ def obj(properties=None, required=None):
 S = {"type": "string"}
 TOOLS = {
     "campaign_inspect": ("Read current problem, runnable evaluators, methods, budgets, aliases and assignments.", obj()),
+    "resource_inspect": ("Read live CPU/RAM, worker measurements, resource forecasts and blockers for this campaign. Does not start jobs or change budgets.", obj()),
     "evidence_search": ("Search saved campaign evidence across current and historical sessions; returns exact IDs. Omit kind to search all supported kinds.", obj({"query": S, "kind": {"type": "string", "enum": sorted(READ_KINDS)}, "offset": {"type": "integer", "minimum": 0}, "limit": {"type": "integer", "minimum": 1, "maximum": 50}})),
     "evidence_read": ("Read a bounded page of an exact evidence record. Follow returned JSON pointers for large records.", obj({"record_id": S, "pointer": S, "offset": {"type": "integer", "minimum": 0}, "max_bytes": {"type": "integer", "minimum": 1024, "maximum": 24576}}, ["record_id"])),
     "source_search": ("Find primary literature and retain retrieval receipts.", obj({"query": S, "provider": {"enum": ["arxiv", "crossref"]}, "limit": {"type": "integer", "minimum": 1, "maximum": 10}}, ["query"])),
@@ -69,8 +78,8 @@ TOOLS = {
     "artifact_save": ("Save an immutable finding, implementation handoff, analysis, or fixed binary mask with evidence links.", obj({"title": S, "kind": {"enum": ["finding", "handoff", "analysis", "mask", "assessment", "review", "checkpoint"]}, "content": {}, "evidence_ids": {"type": "array", "items": S, "maxItems": 100}}, ["title", "kind", "content"])),
     "mask_create": ("Create a reproducible full-sized binary diagnostic mask without putting every cell in model context.", obj({"task_id": S, "pattern": {"enum": ["zeros", "ones", "stripes_x", "stripes_y", "seeded_random"]}, "seed": {"type": "integer", "minimum": 0}, "fill_fraction": {"type": "number", "minimum": 0, "maximum": 1}}, ["task_id", "pattern"])),
     "proposal_review": ("Record an independent conceptual review of the exact hypothesis revision. Test means plausible, not effective.", obj({"hypothesis_id": S, "hypothesis_hash": S, "verdict": {"enum": ["test", "revise", "reject"]}, "rationale": S, "required_changes": {"type": "array", "items": S}, "suggested_tests": {"type": "array", "items": S, "minItems": 1}}, ["hypothesis_id", "hypothesis_hash", "verdict", "rationale", "suggested_tests"])),
-    "delegate": ("Create a persistent specialist child with a focused objective and exact evidence IDs. The PI receives its result automatically.", obj({"role": {"enum": [r for r in ROLES if r != "pi"]}, "objective": S, "evidence_ids": {"type": "array", "items": S, "maxItems": 100}, "request_key": S}, ["role", "objective", "request_key"])),
-    "agent_message": ("Send a follow-up or steering message to one of this PI's children.", obj({"agent_id": S, "message": S}, ["agent_id", "message"])),
+    "delegate": ("Create a persistent specialist child with a focused objective and exact evidence IDs. The lead agent receives its result automatically.", obj({"role": {"enum": [r for r in ROLES if r != LEAD]}, "objective": S, "evidence_ids": {"type": "array", "items": S, "maxItems": 100}, "request_key": S}, ["role", "objective", "request_key"])),
+    "agent_message": ("Send a follow-up or steering message to one of this lead agent's children.", obj({"agent_id": S, "message": S}, ["agent_id", "message"])),
     "agent_cancel": ("Cancel a child assignment while retaining its artifacts and costs.", obj({"agent_id": S}, ["agent_id"])),
     "command_schema": ("Read the exact schema of an execution command before preparing it.", obj({"operation": {"enum": sorted(OPERATIONS)}}, ["operation"])),
     "campaign_command": ("Execute a campaign command within existing delegation. Returns a durable receipt; never grants new authority.", obj({"operation": {"enum": sorted(OPERATIONS)}, "payload": {"type": "object"}, "request_key": S, "guidance_revision": {"type": "integer", "minimum": 0}}, ["operation", "payload", "request_key", "guidance_revision"])),
@@ -79,7 +88,7 @@ TOOLS = {
     "implementation_workspace_message": ("Steer or follow up with the full Pi coding agent in the given workspace.", obj({"workspace_id": S, "message": S, "mode": {"enum": ["steer", "follow_up"]}, "request_key": S, "question_id": S}, ["workspace_id", "message", "request_key"])),
     "implementation_workspace_validate": ("Commission independent validation of one committed source submission within the campaign's implementation allocation. Supply either a frozen envelope_id or a spec; prefer the short envelope ID when available.", obj({"workspace_id": S, "submission_id": S, "envelope_id": S, "spec": {"type": "object"}, "compute_seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 86400}, "request_key": S}, ["workspace_id", "submission_id", "compute_seconds", "request_key"])),
     "researcher_ask": ("Save a concrete researcher question and stop for its answer only when required.", obj({"question": S, "reason": S}, ["question", "reason"])),
-    "yield_work": ("Checkpoint task disposition. Waiting jobs wake the PI automatically; completion must cite actual evidence.", obj({"disposition": {"enum": ["waiting", "complete", "handoff"]}, "summary": S, "evidence_ids": {"type": "array", "items": S, "maxItems": 100}}, ["disposition", "summary"])),
+    "yield_work": ("Checkpoint task disposition. Waiting jobs wake the lead agent automatically; completion must cite actual evidence.", obj({"disposition": {"enum": ["waiting", "complete", "handoff"]}, "summary": S, "evidence_ids": {"type": "array", "items": S, "maxItems": 100}}, ["disposition", "summary"])),
     "workspace_list": ("List this implementation assignment's isolated files.", obj()),
     "workspace_read": ("Read a text file from this assignment's isolated development directory.", obj({"path": S}, ["path"])),
     "workspace_write": ("Write a package or development test file in this assignment's isolated directory.", obj({"path": S, "content": S}, ["path", "content"])),
@@ -94,8 +103,8 @@ class PiTools:
         self.workspace, self.store = controller.workspace, controller.store
 
     def names(self, agent):
-        names = {"campaign_inspect", "evidence_search", "evidence_read", "source_search", "source_ingest", "source_read", "artifact_save", "mask_create", "yield_work"}
-        if agent["role"] == "pi":
+        names = {"campaign_inspect", "resource_inspect", "evidence_search", "evidence_read", "source_search", "source_ingest", "source_read", "artifact_save", "mask_create", "yield_work"}
+        if agent["role"] == LEAD:
             names |= {"delegate", "agent_message", "agent_cancel", "command_schema", "campaign_command", "researcher_ask",
                       "implementation_workspace_create", "implementation_workspace_inspect", "implementation_workspace_message",
                       "implementation_workspace_validate"}
@@ -201,10 +210,21 @@ class PiTools:
         tasks = self.workspace.current_tasks(campaign_id)
         hypotheses = self.store.list("hypothesis", campaign_id)
         from optimization_framework.research.discovery.proposals import readiness, hypothesis_revision
-        pi_view = self.controller.view(campaign_id)
-        pi_view["agents"] = [{k: a.get(k) for k in ("id", "role", "parent_agent_id", "status", "model", "usage", "event_cursor")}
-            for a in pi_view["agents"][-30:]]
-        pi_view["aliases"] = pi_view["aliases"][:100]
+        team_view = self.controller.view(campaign_id)
+        team_view["agents"] = [{k: a.get(k) for k in ("id", "role", "parent_agent_id", "status", "model", "usage", "event_cursor")}
+            for a in team_view["agents"][-30:]]
+        team_view["aliases"] = team_view["aliases"][:100]
+        races = []
+        for record in self.store.list("adaptive_race", campaign_id):
+            view = self.workspace.racing.view(record["id"])
+            races.append({**{key: view.get(key) for key in ("id", "study_id", "status", "stage", "revision", "deadline_at",
+                "elapsed_seconds", "total_seconds", "max_workers", "running_workers", "worker_seconds_spent", "remaining_worker_seconds", "last_error", "report_path")},
+                "preflight_status": view["preflight"]["status"],
+                "configurations": [{key: row[key] for key in ("id", "algorithm", "status", "mean_score", "seeds", "rung_seconds", "maturity")}
+                    for row in view["configurations"]],
+                "recent_decisions": [{"id": row["id"], "action": row["action"], "rationale": row["rationale"][:1000]}
+                    for row in view["decisions"][-10:]],
+                "retrieval": "Read race_decision and race_endpoint evidence individually; the study race API has full endpoint details."})
         return {"campaign": campaign, "guidance_revision": self.workspace.memory.state(campaign_id)["guidance_revision"],
             "researcher_guidance": self.workspace.memory.state(campaign_id)["guidance"],
             "tasks": [{**t, "evaluator_readiness": self.workspace.evaluators.readiness(t)} for t in tasks[:20]],
@@ -215,12 +235,15 @@ class PiTools:
                 "implementation_readiness": self.workspace.implementations.readiness(h, tasks[0] if tasks else None)} for h in hypotheses[:50]],
             "resources": {"experiments": self.workspace.resources.assessment(campaign_id),
                 "implementation_committed_seconds": self.workspace.implementations.compute_committed(campaign_id)},
-            "pi": pi_view,
+            "adaptive_testing": races,
+            "agent_team": team_view,
             "latest_researcher_requests": [{"id": r["id"], "status": r["status"], "message": r["request"]["message"]}
                 for r in self.store.list("manager_command", campaign_id)[-5:]],
             "latest_researcher_messages": [{"id": r["id"], "content": r.get("content", "")[:12000]}
                 for r in self.store.list("message", campaign_id) if r.get("role") == "user"][-5:],
             "capabilities": {"fixed_mask_diagnostics": "fixed_mask.run", "implementation": "implementation.commission",
+                "resource_observability": "resource_inspect; live consumption and estimated future demand, without allocating compute",
+                "adaptive_testing": "study.race.decide and study.race.control; immutable protocol and fresh-seed confirmation",
                 "implementation_execution": implementation_execution(),
                 "experiment": "draft.save then draft.launch; trial.create", "memory": "evidence_search and evidence_read",
                 "guidance": "Use current implementation_readiness, not stale historical executable fields."}}
@@ -229,12 +252,36 @@ class PiTools:
         cid = agent["campaign_id"]
         if name == "campaign_inspect":
             return self.inspect(agent)
+        if name == "resource_inspect":
+            from optimization_framework.execution.observability import get_observer
+            snapshot = deepcopy(get_observer(self.workspace).snapshot(cid))
+            # Numerical archives and long allocation histories have separate
+            # evidence reads. Keep a telemetry inspection bounded for the lead agent.
+            snapshot["workers"]["jobs"] = snapshot["workers"].get("jobs", [])[:16]
+            plans = snapshot.get("plans", [])
+            snapshot["plan_count"] = len(plans)
+            snapshot["plans"] = plans[-4:]
+            for plan in snapshot["plans"]:
+                plan["upcoming_jobs"] = plan.get("upcoming_jobs", [])[:12]
+                plan["decisions"] = [{**row, "rationale": (row.get("rationale") or "")[:1000]}
+                                     for row in plan.get("decisions", [])[-5:]]
+                memory_fields = ("fidelity", "harmonic_count", "predicted_bytes", "headroom_bytes",
+                                 "measured_peak_bytes", "single_matrix_bytes", "expanded_grid_shape",
+                                 "expanded_complex_grid_bytes", "analytical_lower_bound_bytes", "fits_now", "basis")
+                plan["memory_checks"] = [{key: row.get(key) for key in memory_fields}
+                                         for row in plan.get("memory_checks", [])[:8]]
+            budget = snapshot.get("budget")
+            if budget:
+                budget["grant_count"] = len(budget.get("grants", []))
+                budget["grants"] = budget.get("grants", [])[-20:]
+            snapshot["warnings"] = [str(value)[:1000] for value in snapshot.get("warnings", [])[:16]]
+            return snapshot
         if name == "implementation_workspace_create":
-            return self.controller.development.create(cid, args, actor="pi")
+            return self.controller.development.create(cid, args, actor=LEAD)
         if name == "implementation_workspace_inspect":
             return self.controller.development.events(cid, args["workspace_id"], args.get("after", 0))
         if name == "implementation_workspace_message":
-            return self.controller.development.message(cid, args["workspace_id"], {k: v for k, v in args.items() if k != "workspace_id"}, actor="pi")
+            return self.controller.development.message(cid, args["workspace_id"], {k: v for k, v in args.items() if k != "workspace_id"}, actor=LEAD)
         if name == "implementation_workspace_validate":
             return self.controller.development.validate(cid, args["workspace_id"], {k: v for k, v in args.items() if k != "workspace_id"})
         if name == "evidence_read":
@@ -324,7 +371,7 @@ class PiTools:
         if name in {"agent_message", "agent_cancel"}:
             child = self.store.get(args["agent_id"], "agent_session")
             if child["parent_agent_id"] != agent["id"]:
-                raise ValueError("Only this PI's own subagents can be controlled")
+                raise ValueError("Only this lead agent's own subagents can be controlled")
             if name == "agent_message":
                 return self.controller.enqueue(child, "message_" + identity, args["message"], mode="steer")
             return self.controller.control(cid, {"agent_id": child["id"], "action": "stop", "expected_control_revision": child["control_revision"]}, identity)
@@ -354,7 +401,7 @@ class PiTools:
         if name == "yield_work":
             for ref in args.get("evidence_ids", []):
                 self.record(agent, ref)
-            if agent["role"] == "pi" and args["disposition"] == "complete":
+            if agent["role"] == LEAD and args["disposition"] == "complete":
                 active = [a for a in self.store.list("agent_session", cid) if a["parent_agent_id"] == agent["id"] and a["status"] in {"queued", "running", "paused"}]
                 if active or any(t["status"] in {"queued", "running", "pausing"} for t in self.store.list("trial", cid)):
                     raise ValueError("Outstanding assignments or experiments remain; wait or reconcile them before completing")

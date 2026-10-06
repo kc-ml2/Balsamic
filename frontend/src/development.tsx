@@ -82,7 +82,7 @@ export function DevelopmentPanel({state, refresh}:{state:State; refresh:()=>Prom
     try{
       const envelope=active.validation_envelopes?.[0];
       await command('agent.message',{message:`Review submission ${submission.id} (commit ${submission.commit}) in implementation workspace ${active.id}. Use frozen validation envelope ${envelope?.id || '(prepare one first)'} and only an explicitly available implementation allocation. Report findings and repair requests to the same coding session.`,mode:'steer'});
-      setNotice('Validation request sent to the PI.');await refresh();
+      setNotice('Validation request sent to the lead agent.');await refresh();
     }catch(failure){setError(errorText(failure));}finally{setBusy(false);}
   }
   if(!state.agent_runtime?.development?.enabled)return null;
@@ -118,7 +118,7 @@ export function DevelopmentPanel({state, refresh}:{state:State; refresh:()=>Prom
         {(active.submissions || []).map((s:Json)=><article className="research-direction" key={s.id}><strong>Committed submission · {s.commit.slice(0,12)}</strong>
           <p><Badge>{s.status}</Badge> {s.manifest?.test_summary}</p>
           {s.validation_outcome && <TextContent text={JSON.stringify(s.validation_outcome)} />}
-          {s.status==='submitted' && <button className="button small secondary" disabled={busy} onClick={()=>void askPi(s)}>Ask PI to validate</button>}</article>)}
+          {s.status==='submitted' && <button className="button small secondary" disabled={busy} onClick={()=>void askPi(s)}>Ask lead agent to validate</button>}</article>)}
         {(active.validation_envelopes || []).map((envelope:Json)=><p key={envelope.id}>
           Frozen validation envelope <code>{envelope.id}</code> · {envelope.checks?.behavior || 0} behavior, {envelope.checks?.mechanism || 0} state, {envelope.checks?.diagnostic || 0} diagnostic checks.
         </p>)}

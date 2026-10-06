@@ -87,6 +87,10 @@ def fingerprint(spec):
             "source_hash", "recovery", "initial_assets", "implementation_version_id", "implementation_artifact_digest",
             "implementation_runtime_digest", "completion", "recipe", "declared_assets", "diagnostics")
     identity = {key: spec.get(key) for key in keys}
+    # One thread is the historical execution policy. Explicitly recording that
+    # default must not invalidate a legacy checkpoint or its process lease.
+    if spec.get("numerical_threads", 1) != 1:
+        identity["numerical_threads"] = spec["numerical_threads"]
     if spec.get("evaluator_version_id"):
         identity["evaluator"] = {key: spec[key] for key in ("evaluator_version_id", "evaluator_artifact_digest", "evaluator_runtime_digest")}
     if spec.get("evaluator_eligibility"):
@@ -121,6 +125,7 @@ class ExperimentWorker:
             if (frozen.problem.model_dump(mode="json") != self.spec["problem"] or frozen.seed != self.spec["seed"]
                     or frozen.parameters != {k: self.spec[k] for k in ("algorithm", "algorithm_config", "training", "recipe") if k in self.spec}
                     or frozen.schedule["steps"] != self.spec["schedule_steps"]
+                    or frozen.schedule.get("numerical_threads", 1) != self.spec.get("numerical_threads", 1)
                     or frozen.initial_assets != self.spec.get("initial_assets", [])
                     or frozen.contribution_asset_ids != self.spec.get("contribution_asset_ids", [])
                     or frozen.dependencies != self.spec.get("dependencies", [])
@@ -569,7 +574,7 @@ def run(directory, *, enforce_deadline=False, **kwargs):
             if enforce_deadline and spec.get("absolute_deadline"):
                 from optimization_framework.execution.watchdog import arm
                 deadline_guard = arm(directory, spec, lease_record)
-            with threadpool_limits(limits=1):
+            with threadpool_limits(limits=spec.get("numerical_threads", 1)):
                 worker = ExperimentWorker(directory, attempt_id=lease_record["attempt_id"], **kwargs)
                 if stop_requested:
                     worker.signal_command = "stop"

@@ -98,3 +98,37 @@ def test_worker_lease_adopts_child_when_pid_commit_was_lost(tmp_path):
         if process.poll() is None:
             process.kill()
             process.wait(timeout=5)
+
+
+def test_derived_trial_queries_follow_commits_and_rollbacks(tmp_path):
+    store = Store(tmp_path)
+    trial = {"id": "trial_a", "campaign_id": "c", "status": "completed", "execution_contract": 1,
+             "attempt": 1, "algorithm": "coordinate", "seed": 0}
+    assert store.trials_requiring_capture() == [] and store.list_trial_headers() == []
+    store.put("trial", trial)
+    assert [row["id"] for row in store.trials_requiring_capture()] == ["trial_a"]
+    assert store.list_trial_headers()[0]["algorithm"] == "coordinate"
+    store.trials_requiring_capture()[0]["status"] = "mutated by a caller"
+    assert store.trials_requiring_capture()[0]["status"] == "completed"
+    with pytest.raises(RuntimeError):
+        with store.transaction():
+            store.put("trial", {**trial, "asset_capture_attempt": 1})
+            assert store.trials_requiring_capture() == []
+            raise RuntimeError("Simulated failure before commit")
+    assert [row["id"] for row in store.trials_requiring_capture()] == ["trial_a"]
+    store.put("trial", {**trial, "asset_capture_attempt": 1})
+    assert store.trials_requiring_capture() == []
+
+
+def test_unchanged_context_advances_cursor_without_a_new_revision(tmp_path):
+    workspace, request = prepare(tmp_path)
+    campaign_id = request.campaign_id
+    first = workspace.memory.sync(campaign_id)
+    workspace.store.event(campaign_id, "test.noise", {})
+    again = workspace.memory.sync(campaign_id)
+    state = workspace.memory.state(campaign_id)
+    assert again["id"] == first["id"] and state["revision"] == first["revision"]
+    assert state["event_cursor"] > first["event_cursor"]
+    assert len(workspace.store.list("context_revision", campaign_id)) == 1
+    edited = workspace.memory.edit(campaign_id, "New direction", state["revision"])
+    assert edited["id"] != first["id"] and edited["revision"] == first["revision"] + 1

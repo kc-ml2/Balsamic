@@ -1793,7 +1793,7 @@ class DiscoveryController:
         """Readable durable research history, separate from the raw debug stream."""
         for campaign_id in {row["campaign_id"] for row in self.store.list("discovery_session")}:
             with self.store.connection() as db:
-                cursor = db.execute("SELECT COALESCE(MAX(id),0) FROM events WHERE campaign_id=? AND kind LIKE 'discovery.%'", (campaign_id,)).fetchone()[0]
+                cursor = db.execute("SELECT COALESCE(MAX(id),0) FROM events WHERE campaign_id=? AND kind >= 'discovery.' AND kind < 'discovery/'", (campaign_id,)).fetchone()[0]
             identity = "discovery_projection_" + campaign_id
             try:
                 if self.store.get(identity, "discovery_projection")["cursor"] == cursor:

@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-test('comparison reads show progress, coalesce updates, and discard a previous cost axis', async ({ page }) => {
+test('comparison reads load on request, show progress, coalesce refreshes, and discard a previous cost axis', async ({ page }) => {
   await page.clock.install();
   await page.addInitScript(() => {
     (window as any).EventSource = class extends EventTarget { close() {} };
@@ -36,18 +36,23 @@ test('comparison reads show progress, coalesce updates, and discard a previous c
     return route.fulfill({ json: {} });
   });
   await page.goto('/#comparison');
+  // The detailed report reads full provenance, so it loads only on request
+  // and workspace updates do not re-read it.
+  const initialStateReads = stateReads;
+  state.event_cursor++;
+  await page.clock.fastForward(6000);
+  await expect.poll(() => stateReads).toBeGreaterThan(initialStateReads);
+  expect(reads).toBe(0);
+  await page.getByRole('button', { name: 'Load matched-cost report' }).click();
   await expect.poll(() => releases.has(1)).toBe(true);
   await expect(page.getByRole('status').filter({ hasText: 'Loading comparison results…' })).toBeVisible();
   await expect(page.getByText('No comparable experiments yet')).not.toBeVisible();
 
-  // Workspace events arriving during a slow read request one follow-up rather
-  // than overlapping requests or invalidating every response indefinitely.
-  state.event_cursor++;
-  await page.clock.fastForward(6000);
-  await expect.poll(() => stateReads).toBe(2);
-  state.event_cursor++;
-  await page.clock.fastForward(6000);
-  await expect.poll(() => stateReads).toBe(3);
+  // Refreshes requested during a slow read produce one follow-up read rather
+  // than overlapping requests.
+  const refresh = page.getByRole('button', { name: 'Refresh matched-cost report' });
+  await refresh.click();
+  await refresh.click();
   expect(reads).toBe(1);
   releases.get(1)!();
   await expect.poll(() => releases.has(2)).toBe(true);
@@ -66,9 +71,8 @@ test('comparison reads show progress, coalesce updates, and discard a previous c
   await expect(page.getByRole('status').filter({ hasText: /comparison results/ })).not.toBeVisible();
   expect(requests).toEqual(['worker_seconds', 'worker_seconds', 'evaluation_requests']);
 
-  // An update keeps the last usable report visible even if the refresh fails.
-  state.event_cursor++;
-  await page.clock.fastForward(6000);
+  // A refresh keeps the last usable report visible even if it fails.
+  await refresh.click();
   await expect.poll(() => releases.has(4)).toBe(true);
   await expect(page.getByRole('cell', { name: /Request report/ })).toBeVisible();
   releases.get(4)!();

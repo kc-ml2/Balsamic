@@ -34,7 +34,7 @@ export class BrowserLogin {
         this.current={status:'connected'};
       } catch(error:any) {
         this.current={status:'expired',reason:'Sign-in did not complete. Generate another browser code.'};
-        rejectReady(Error('Could not start or complete OpenAI device sign-in. Retry from the PI panel.'));
+        rejectReady(Error('Could not start or complete OpenAI device sign-in. Retry from the agent team panel.'));
       } finally {this.pending=null;}
     })();
     return this.pending;

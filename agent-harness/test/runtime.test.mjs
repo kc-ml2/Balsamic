@@ -18,7 +18,8 @@ test('status detects persisted login and logout without exposing credentials or 
   const status = await authStatus(authPath);
   assert.equal(status.configured, true);
   assert.equal(status.provider, 'openai-codex');
-  assert.ok(status.models.includes('gpt-6-astra'));
+  assert.ok(status.models.some(m => m.id === 'gpt-6-astra' && m.provider === 'openai-codex'));
+  assert.equal(status.providers['openai-codex'].billing, 'subscription');
   assert.ok(!JSON.stringify(status).includes('secret'));
   fs.writeFileSync(authPath, '{}');
   assert.equal((await authStatus(authPath)).configured, false);

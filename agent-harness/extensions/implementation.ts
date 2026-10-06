@@ -45,8 +45,8 @@ function scan(pi: ExtensionAPI): void {
     pi.appendEntry('campaign_command', {id: command.id, actor: command.actor,
       operation: command.operation, received_at: new Date().toISOString()});
     if (command.operation === 'message') {
-      const prefix = command.actor === 'researcher' ? 'Developer instruction (takes precedence over conflicting PI guidance):\n'
-        : command.actor === 'pi' ? 'Campaign PI instruction:\n' : 'Campaign system notice:\n';
+      const prefix = command.actor === 'researcher' ? 'Developer instruction (takes precedence over conflicting lead-agent guidance):\n'
+        : command.actor === 'lead' || command.actor === 'pi' ? 'Campaign lead agent instruction:\n' : 'Campaign system notice:\n';
       pi.sendUserMessage(prefix + command.message, {deliverAs: command.mode === 'steer' ? 'steer' : 'followUp'});
       outstanding.add(command.id);
     } else if (command.operation === 'pause' || command.operation === 'stop') {
@@ -58,7 +58,7 @@ function scan(pi: ExtensionAPI): void {
 
 const checkpoint = defineTool({
   name: 'campaign_checkpoint', label: 'Campaign checkpoint',
-  description: 'Persist implementation progress, remaining work, a blocker or a question for the campaign PI and developer.',
+  description: 'Persist implementation progress, remaining work, a blocker or a question for the campaign lead agent and developer.',
   parameters: Type.Object({
     summary: Type.String({minLength: 1, maxLength: 10000}),
     next_steps: Type.Optional(Type.String({maxLength: 10000})),

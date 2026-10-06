@@ -4,6 +4,7 @@ import { api, ApiError, errorText } from './api';
 import type { ProviderStatus, State } from './api';
 import { useCommand } from './commands';
 import { Badge, Empty, ErrorNotice, Field, Icon, Panel } from './ui';
+import './llmUsage.css';
 
 type Effort = 'low' | 'medium' | 'high' | 'xhigh';
 type Binding = {
@@ -62,13 +63,79 @@ function BindingFields({ label, value, onChange, priced }: {
   </div>;
 }
 
-export function ModelControlPanel({ state, refresh }: { state: State; refresh: () => Promise<void> }) {
-  if (state.agent_runtime?.configuration?.enabled) return <div className="model-control-panel">
-    <h1>Pi session models</h1><p>Pi uses your OpenAI Codex subscription. Each persistent session keeps its assigned model and reasoning effort.</p>
-    <table><thead><tr><th>Agent</th><th>Model</th><th>Reasoning</th><th>Status</th></tr></thead><tbody>
-      {(state.agent_runtime.agents || []).map((agent: any) => <tr key={agent.id}><td>{roleLabel(agent.role)}</td><td>{agent.model}</td><td>{effortLabel(agent.reasoning_effort)}</td><td>{agent.status}</td></tr>)}
-    </tbody></table><p>Open Research notebook to sign in, message the PI, and control its team.</p><a className="button secondary" href="#notebook">Open PI conversation</a>
+type PiModel = { provider: string; id: string; name: string; thinking_levels: string[]; family: string };
+type PiModels = { mode: 'dev' | 'locked'; family: string | null; default: { provider: string; model: string; effort: string | null } | null;
+  providers: Record<string, { auth: string; billing: string }>; models: PiModel[] };
+
+/** Model and thinking-level selector; the list holds only the campaign family's signed-in models. */
+function ModelPicker({ models, value, disabled, onApply, label }: { models: PiModel[]; value: { provider?: string; model?: string; effort?: string | null };
+    disabled?: boolean; onApply: (choice: { provider: string; model: string; effort: string | null }) => Promise<void>; label: string }) {
+  const current = `${value.provider || ''}/${value.model || ''}`;
+  const [choice, setChoice] = useState(current), [effort, setEffort] = useState(value.effort || ''), [busy, setBusy] = useState(false);
+  useEffect(() => { setChoice(current); setEffort(value.effort || ''); }, [current, value.effort]);
+  const selected = models.find(m => `${m.provider}/${m.id}` === choice);
+  const levels = selected?.thinking_levels || [];
+  const changed = choice !== current || effort !== (value.effort || '');
+  const known = models.some(m => `${m.provider}/${m.id}` === current);
+  return <div className="model-picker">
+    <select aria-label={`${label} model`} value={choice} disabled={disabled || busy} onChange={event => setChoice(event.target.value)}>
+      {!known && <option value={current}>{current} (not signed in)</option>}
+      {models.map(m => <option key={`${m.provider}/${m.id}`} value={`${m.provider}/${m.id}`}>{m.provider}/{m.id}</option>)}
+    </select>
+    <select aria-label={`${label} thinking level`} value={effort} disabled={disabled || busy} onChange={event => setEffort(event.target.value)}>
+      <option value="">Model default</option>
+      {levels.map(level => <option key={level} value={level}>{level}</option>)}
+    </select>
+    <button className="button small primary" disabled={disabled || busy || !changed || !selected || Boolean(effort && !levels.includes(effort))}
+      onClick={async () => { setBusy(true); try { await onApply({ provider: selected!.provider, model: selected!.id, effort: effort || null }); } finally { setBusy(false); } }}>
+      {busy ? 'Saving…' : 'Apply'}</button>
   </div>;
+}
+
+function AgentModelPanel({ state, refresh }: { state: State; refresh: () => Promise<void> }) {
+  const command = useCommand(state.campaign);
+  const [view, setView] = useState<PiModels | null>(null), [error, setError] = useState(''), [notice, setNotice] = useState('');
+  const campaignId = state.campaign?.id;
+  useEffect(() => {
+    if (!campaignId) return;
+    api<PiModels>(`/api/campaigns/${campaignId}/agents/models`).then(setView).catch(reason => setError(errorText(reason)));
+  }, [campaignId]);
+  const agents = state.agent_runtime?.agents || [];
+  const dev = view?.mode === 'dev';
+  async function apply(agentId: string | null, model: { provider: string; model: string; effort: string | null }) {
+    setError(''); setNotice('');
+    try {
+      await command('agent.configure', { agent_id: agentId, model });
+      setNotice(agentId ? 'Saved. The agent switches at its next turn.' : 'Saved. New agents in this campaign will use this model.');
+      await refresh();
+      if (campaignId) setView(await api<PiModels>(`/api/campaigns/${campaignId}/agents/models`));
+    } catch (reason) { setError(errorText(reason)); }
+  }
+  return <div className="model-control-panel">
+    <h1>Agent models</h1>
+    <p>{dev ? 'Dev mode: choose the model and thinking level per agent, or the campaign default for new agents. Changes take effect at the next turn.'
+      : 'Each persistent session keeps its assigned model and thinking level. Model changes are available only when the Pi harness runs a dev profile.'}</p>
+    {view?.family && <p>This campaign uses the <b>{view.family}</b> model family. Continuing a campaign with another family is not allowed; start a new campaign instead.</p>}
+    <ErrorNotice text={error} />{notice && <p className="success-text" role="status">{notice}</p>}
+    {dev && view && <><h2>Campaign default</h2>
+      <ModelPicker label="Campaign default" models={view.models} value={{ provider: view.default?.provider, model: view.default?.model, effort: view.default?.effort }}
+        onApply={choice => apply(null, choice)} /></>}
+    <h2>Agents</h2>
+    <table><thead><tr><th>Agent</th><th>Status</th><th>{dev ? 'Model and thinking' : 'Model'}</th>{!dev && <th>Thinking</th>}</tr></thead><tbody>
+      {agents.map((agent: any) => <tr key={agent.id}><td>{roleLabel(agent.role)}</td><td>{agent.status}</td>
+        {dev && view && !agent.grant_id
+          ? <td><ModelPicker label={roleLabel(agent.role)} models={view.models} value={{ provider: agent.provider, model: agent.model, effort: agent.reasoning_effort }}
+              onApply={choice => apply(agent.id, choice)} /></td>
+          : <><td>{agent.provider ? `${agent.provider}/` : ''}{agent.model}{agent.grant_id ? ' (frozen with its grant)' : ''}</td>{!dev && <td>{agent.reasoning_effort ? effortLabel(agent.reasoning_effort) : 'Model default'}</td>}</>}
+      </tr>)}
+    </tbody></table>
+    <p>Usage and cost per agent and model are on the <a href="#llm-usage">LLM usage</a> page.</p>
+    <a className="button secondary" href="#notebook">Open the lead agent conversation</a>
+  </div>;
+}
+
+export function ModelControlPanel({ state, refresh }: { state: State; refresh: () => Promise<void> }) {
+  if (state.agent_runtime?.configuration?.enabled) return <AgentModelPanel state={state} refresh={refresh} />;
   return <LegacyModelControlPanel state={state} refresh={refresh} />;
 }
 

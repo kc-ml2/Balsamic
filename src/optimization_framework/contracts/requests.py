@@ -94,6 +94,9 @@ class TrialInput(Model):
     seed: int = Field(default=0, ge=0, le=2**32 - 1)
     max_steps: int = Field(default=512, ge=1, le=10000000)
     wall_seconds: float = Field(default=60, gt=0, le=86400)
+    numerical_threads: int = Field(default=1, ge=1, le=4, strict=True)
+    race_id: str | None = None
+    race_phase: Literal["preflight", "calibration", "development", "confirmation", "validation"] | None = None
     schedule_steps: int | None = Field(default=None, ge=1, le=10000000)
     hypothesis_id: str | None = None
     question: str = Field(default="Compare search progress under a bounded budget.", max_length=10000,

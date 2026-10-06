@@ -224,7 +224,7 @@ def resolve(workspace, command):
         if action.get("guidance_revision", workspace.memory.state(command.campaign_id)["guidance_revision"]) != workspace.memory.state(command.campaign_id)["guidance_revision"]:
             raise ValueError("Researcher guidance changed; ask the manager to update this action")
         effect = {"action": deepcopy(action)}
-    elif values.choice == "0" and decision.get("trial_id") and decision.get("incremental_solver_calls"):
+    elif values.choice == "0" and decision.get("trial_id") and decision.get("incremental_solver_calls") is not None:
         from .decisions import public_decision
         if "0" in public_decision(workspace, decision)["freshness"]["blocked_choice_ids"]:
             raise ValueError("This recommendation used an older charter or guidance; request a current proposal")
@@ -242,7 +242,8 @@ def resolve(workspace, command):
             expected_authority_hash=workspace.commands.authority_hash(campaign),
             payload={"trial_id": trial["id"], "action": "extend", "expected_control_revision": trial["control_revision"],
                      "max_steps": trial["max_steps"] + decision["incremental_solver_calls"],
-                     "wall_seconds": trial["wall_seconds"] + max(5, seconds)})
+                     # An estimate gets a margin; a stated request is granted exactly as shown.
+                     "wall_seconds": trial["wall_seconds"] + (seconds if decision.get("requested_by") else max(5, seconds))})
         effect = {"child_command": child.model_dump(mode="json")}
     memory = workspace.memory.state(command.campaign_id)
     if not accounting_only:

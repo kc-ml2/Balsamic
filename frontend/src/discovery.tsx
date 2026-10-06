@@ -67,7 +67,7 @@ export function DiscoveryPanel({ state, refresh }: { state: State; refresh: () =
   const sessionTasks = (view.tasks || []).filter((task: Json) => task.session_id === session?.id);
   return <section className="panel discovery-panel" aria-label="Optimizer discovery">
     <h2>{piOwned ? 'Discovery archive' : 'Optimizer discovery'}</h2>
-    <p>{piOwned ? 'Pi continues this campaign from the saved discoveries below. Send new work through the PI conversation above.' : 'Agents analyze the executable problem, study sources, and develop candidates through the campaign manager. Their work is saved across sessions.'}</p>
+    <p>{piOwned ? 'Pi continues this campaign from the saved discoveries below. Send new work through the lead agent conversation above.' : 'Agents analyze the executable problem, study sources, and develop candidates through the campaign manager. Their work is saved across sessions.'}</p>
     {!providerStatus(state).configured && <p className="callout">Model configuration is required for discovery. Starting a session saves its agenda and waits for an enabled model.</p>}
     <ErrorNotice text={error} />
     {!active && !piOwned && <form onSubmit={start} className="discovery-start">

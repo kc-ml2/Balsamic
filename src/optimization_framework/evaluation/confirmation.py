@@ -12,6 +12,7 @@ def resolved_method_definition(trial):
     if not trial.get("scientific_source_hash") or not trial.get("scientific_environment"):
         raise ValueError("This historical prototype needs verified source/runtime identities before confirmation")
     return {**({"diagnostics": trial["diagnostics"]} if trial.get("diagnostics") else {}),
+        **({"numerical_threads": trial["numerical_threads"]} if trial.get("numerical_threads", 1) != 1 else {}),
         **({"method_contract": trial["method_contract"], "recovery": RecoveryPolicy(**trial.get("recovery", {})).model_dump(mode="json")} if trial.get("method_contract") in {2, 3} else {}),
         "algorithm": trial["algorithm"], "algorithm_config": trial.get("algorithm_config", {}),
         "training": {key: value for key, value in trial.get("training", {}).items() if key != "seed"},
@@ -91,6 +92,7 @@ class ConfirmationService:
                 if not source_matches(self.store, protocol, cell["method_id"], prototype):
                     raise ValueError("The frozen source prototype changed; confirmation cannot substitute its current procedure")
                 request = TrialInput(campaign_id=campaign["id"], task_id=task["id"], seed=cell["seed"],
+                    numerical_threads=prototype.get("numerical_threads", 1),
                     algorithm=method["algorithm"], implementation_version_id=method.get("implementation_version_id"),
                     algorithm_config=method["algorithm_config"], training=method["training"], initial_assets=method["initial_assets"],
                     reuse_decision_ids=decisions, max_steps=method["max_steps"], schedule_steps=method["schedule_steps"],

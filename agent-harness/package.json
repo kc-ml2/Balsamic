@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {"build": "tsc", "start": "node dist/server.js", "test": "npm run build && node --test test/*.test.mjs"},
-  "dependencies": {"@earendil-works/pi-coding-agent": "0.87.1"},
+  "dependencies": {"@earendil-works/pi-coding-agent": "1.0.4"},
   "devDependencies": {"@types/node": "22.19.19", "typescript": "5.9.3"},
   "engines": {"node": ">=22.19.0"}
 }

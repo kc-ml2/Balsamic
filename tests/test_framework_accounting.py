@@ -411,3 +411,29 @@ def test_imported_executable_reuse_keeps_research_lineage_and_adds_local_work_on
     assert destination.implementations.cost_asset(client.artifact(version)) == first
     assert destination.store.list("cost_event") == events
     assert len(library.store.list("implementation_job")) == 1
+
+
+def test_unsettled_library_jobs_are_refetched_on_events_or_sweep_only(tmp_path):
+    from optimization_framework.implementations.service import ImplementationService
+    from test_framework_provenance import campaign
+    workspace, owner, _ = campaign(tmp_path / "workspace")
+    service = ImplementationService(tmp_path / "library")
+    fetched = []
+    class Client:
+        def events(self, **kwargs): return service.events(**kwargs)
+        def job(self, identity): fetched.append(identity); return service.store.get(identity, "implementation_job")
+    workspace.implementations.client = Client()
+    workspace.store.put("implementation_grant", {"id": "grant", "campaign_id": owner, "job_id": "blocked_build",
+        "request": {"compute_seconds": 10, "api_budget_usd": 0}, "status": "blocked", "created_at": "historical"})
+    service.store.put("implementation_job", {"id": "blocked_build", "campaign_id": owner, "revision": 1,
+        "created_at": "historical", "updated_at": "historical", "status": "blocked", "accounting_final": False,
+        "usage": {}, "compute_seconds": 0, "attempts": []}, "implementation.progress")
+    workspace.implementations.reconcile()
+    workspace.implementations.reconcile()
+    assert fetched == ["blocked_build"]
+    service.update_job("blocked_build", status="failed")
+    workspace.implementations.reconcile()
+    assert fetched == ["blocked_build", "blocked_build"]
+    workspace.implementations._job_sweep_at = 0
+    workspace.implementations.reconcile()
+    assert len(fetched) == 3

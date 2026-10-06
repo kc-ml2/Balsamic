@@ -6,7 +6,7 @@ import path from 'node:path';
 import {Supervisor} from '../dist/supervisor.js';
 
 const until = async predicate => { for (let i=0; i<200; i++) { if (predicate()) return; await new Promise(r=>setTimeout(r,5)); } throw Error('Timed out'); };
-const request = (run_id, text='work', mode='follow_up') => ({run_id, text, mode, spec:{model:'fake', role:'pi'}});
+const request = (run_id, text='work', mode='follow_up') => ({run_id, text, mode, spec:{model:'fake', role:'lead'}});
 function fixture(t) {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(),'pi-test-')); t.after(()=>fs.rmSync(directory,{recursive:true,force:true}));
   const runtimes=[], options=[], gatewayCalls=[];
@@ -85,4 +85,38 @@ test('shutdown remains interrupted when SDK abort returns before the active prom
   assert.equal(s.view('pi').runs.queued.status,'interrupted');
   const restarted=new Supervisor(f.directory,f.factory,f.gateway,'private-auth');
   assert.equal(restarted.agents.get('pi').control,null);
+});
+test('state changes are pushed to the workspace as one batched notice per burst', async t=>{
+  const f=fixture(t), notices=[];
+  const s=new Supervisor(f.directory,f.factory,f.gateway,'private-auth',ids=>{notices.push(ids);});
+  await s.submit('lead',request('first')); await until(()=>f.runtimes[0]?.finish);
+  await until(()=>notices.length===1);
+  assert.deepEqual(notices[0],['lead']);
+  f.runtimes[0].finish(); await until(()=>s.view('lead').runs.first.status==='completed');
+  await until(()=>notices.length===2);
+  assert.deepEqual(notices[1],['lead']);
+});
+test('a stored spec with the old "pi" role is migrated to the lead role', async t=>{
+  const f=fixture(t);
+  await f.supervisor.submit('lead',request('first')); await until(()=>f.runtimes[0]?.finish);
+  const file=path.join(f.directory,'lead','state.json'), saved=JSON.parse(fs.readFileSync(file,'utf8'));
+  saved.spec.role='pi'; fs.writeFileSync(file,JSON.stringify(saved));
+  const restarted=new Supervisor(f.directory,f.factory,f.gateway,'private-auth');
+  await restarted.submit('lead',request('second'));
+  assert.equal(restarted.agents.get('lead').spec.role,'lead');
+});
+test('model and thinking changes apply at the next turn; the role is fixed', async t=>{
+  const f=fixture(t), applied=[];
+  const s=new Supervisor(f.directory,f.factory,f.gateway,'private-auth',null,async (runtime,spec)=>{applied.push(spec);});
+  const spec=(model,effort,role='lead')=>({provider:'deepseek',model,effort,role});
+  await s.submit('lead',{run_id:'first',text:'work',mode:'follow_up',spec:spec('deepseek-v4-pro','high')});
+  await until(()=>f.runtimes[0]?.finish);
+  await assert.rejects(s.submit('lead',{run_id:'other',text:'x',spec:spec('deepseek-v4-pro','high','results_analyst')}),/role/);
+  await s.submit('lead',{run_id:'second',text:'more',mode:'follow_up',spec:spec('deepseek-flash','max')});
+  assert.equal(applied.length,0);
+  assert.ok(s.view('lead').events.some(e=>e.type==='spec.updated'&&e.model==='deepseek-flash'));
+  f.runtimes[0].finish(); await until(()=>applied.length===1);
+  assert.deepEqual(applied[0],spec('deepseek-flash','max'));
+  await until(()=>s.view('lead').events.some(e=>e.type==='model.changed'));
+  assert.equal(f.runtimes.length,1);
 });

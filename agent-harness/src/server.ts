@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {timingSafeEqual} from 'node:crypto';
 import {Supervisor} from './supervisor.js';
-import {createRuntime, authStatus} from './runtime.js';
+import {createRuntime, authStatus, applySpec} from './runtime.js';
 import {BrowserLogin} from './login.js';
 
 const directory = path.resolve(process.env.GRATING_PI_DIRECTORY || 'runs/pi');
@@ -31,7 +31,11 @@ const supervisor = new Supervisor(directory, createRuntime, async (operation, da
       await new Promise(resolve => setTimeout(resolve, 500 * 2 ** attempt));
     }
   }
-}, authPath);
+}, authPath, async ids => {
+  await fetch(`${backend}/api/internal/pi/notify`, {method: 'POST',
+    headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
+    body: JSON.stringify({agent_ids: ids}), signal: AbortSignal.timeout(10000)});
+}, applySpec);
 function authorized(req: http.IncomingMessage) {
   const supplied = Buffer.from(req.headers.authorization || ''); const expected = Buffer.from(`Bearer ${token}`);
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);

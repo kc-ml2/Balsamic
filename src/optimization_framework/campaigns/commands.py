@@ -13,11 +13,14 @@ from optimization_framework.contracts.references import ReferenceImportInput
 from optimization_framework.contracts.bundles import BundleExportInput, BundleInspectInput, BundlePublishInput
 from optimization_framework.contracts.commands import EvaluatorCommissionInput, EvaluatorAttachInput, ImplementationControlInput, WaiverRevocationInput, RevalidationInput, ExecutableReuseInput, RuntimeResolutionInput
 from optimization_framework.contracts.commands import CampaignUpdateInput, ContextEditInput, IssueResolveInput, TrialControlInput, TrialValidationInput
+from optimization_framework.contracts.commands import TrialExtensionRequestInput
 from optimization_framework.contracts.commands import HypothesisReviewInput, HypothesisStatusInput, HypothesisNominateInput
 from optimization_framework.contracts.commands import ResearchControlInput, ResearchRetryInput, DecisionResolveInput, DecisionRefreshInput, SourceRecordInput, SourceIngestInput
 from optimization_framework.contracts.commands import InferenceRunInput, FinalistSetInput
 from optimization_framework.contracts.manager import ContextImportInput
 from optimization_framework.contracts.commands import ComparisonReportInput
+from optimization_framework.contracts.commands import AssetSnapshotInput
+from optimization_framework.contracts.racing import RaceCreateInput, RaceControlInput, RaceDecisionInput
 
 
 DELEGATED = {"discovery.assessment.save", "discovery.assessment.launch", "discovery.assessment.decide", "trial.create", "draft.save", "draft.launch", "reproduction.draft", "reproduction.compare", "study.nominate", "validation.run", "validation.require", "validation.execute", "validation.waive", "inference.run", "asset.reuse", "comparison.report", "finding.record",
@@ -27,6 +30,9 @@ DELEGATED = {"discovery.assessment.save", "discovery.assessment.launch", "discov
 
 DELEGATED.update({"fixed_mask.run", "hypothesis.create", "hypothesis.review", "hypothesis.status",
                   "trial.control", "study.create", "study.activate", "implementation.bind_builtin"})
+DELEGATED.update({"study.race.control", "study.race.decide"})
+DELEGATED.add("asset.snapshot")
+DELEGATED.add("trial.extension_request")
 
 
 class CommandService:
@@ -83,13 +89,14 @@ class CommandService:
     def describe():
         """Use the application's schemas in prompts instead of a second tool model."""
         from optimization_framework.research.discovery.models import DiscoveryStart, DiscoveryControl, DiscoveryAmend, DiscoveryRetry
-        from optimization_framework.agents.models import Activate, Message, Control, Rollback
+        from optimization_framework.agents.models import Activate, Configure, Message, Control, Rollback
         from optimization_framework.agents.diagnostics import FixedMaskInput
         from optimization_framework.research.model_policy import ModelPolicyUpdate
         from optimization_framework.implementations.references import ReferenceInput
         from optimization_framework.implementations.builtin import BuiltinBindingInput
         from optimization_framework.research.discovery.assessment import AssessmentSave, AssessmentLaunch, AssessmentDecision
         models = {"agent.activate": Activate, "agent.message": Message, "agent.control": Control, "agent.rollback": Rollback,
+            "agent.configure": Configure,
             "fixed_mask.run": FixedMaskInput, "comparison.report": ComparisonReportInput, "campaign.create": CampaignInput, "campaign.update": CampaignUpdateInput,
             "models.configure": ModelPolicyUpdate,
             "discovery.start": DiscoveryStart, "discovery.control": DiscoveryControl, "discovery.amend": DiscoveryAmend, "discovery.retry": DiscoveryRetry,
@@ -97,16 +104,19 @@ class CommandService:
             "context.edit": ContextEditInput, "context.import": ContextImportInput, "issue.resolve": IssueResolveInput,
             "hypothesis.create": HypothesisInput, "hypothesis.review": HypothesisReviewInput,
             "hypothesis.status": HypothesisStatusInput, "hypothesis.nominate": HypothesisNominateInput,
-            "trial.create": TrialInput, "trial.control": TrialControlInput, "trial.validate": TrialValidationInput, "inference.run": InferenceRunInput,
+            "trial.create": TrialInput, "trial.control": TrialControlInput, "trial.extension_request": TrialExtensionRequestInput, "trial.validate": TrialValidationInput, "inference.run": InferenceRunInput,
             "draft.save": DraftSaveInput, "draft.launch": DraftLaunchInput,
             "reproduction.draft": ReproductionDraftInput, "reproduction.compare": ReproductionCompareInput,
             "bundle.export": BundleExportInput, "bundle.inspect": BundleInspectInput, "bundle.publish": BundlePublishInput,
             "cost.reconcile": CostReconcileInput,
             "study.create": StudyInput, "study.nominate": NominateInput, "finalist.set": FinalistSetInput, "validation.run": RecipeInput,
             "study.freeze_template": TemplateFreezeInput, "study.activate": ExecutionInput,
+            "study.race.create": RaceCreateInput, "study.race.control": RaceControlInput,
+            "study.race.decide": RaceDecisionInput,
             "validation.require": RecipeInput, "validation.execute": ExecuteValidationInput, "validation.waive": WaiverInput,
             "validation.revoke_waiver": WaiverRevocationInput,
             "asset.reuse": ReuseInput, "finding.record": FindingInput, "implementation.commission": CommissionInput,
+            "asset.snapshot": AssetSnapshotInput,
             "asset.import_reference_set": ReferenceImportInput,
             "implementation.reference": ReferenceInput, "implementation.bind_builtin": BuiltinBindingInput,
             "implementation.attach": AttachInput, "research.start": ResearchInput, "literature.search": SearchInput,
@@ -196,6 +206,11 @@ class CommandService:
                     default_wall = 60 if command.operation == "trial.create" else 120
                     if command.operation in {"trial.create", "validation.run", "validation.execute", "inference.run"} and command.payload.get("wall_seconds", default_wall) > campaign["delegated_trial_seconds"]:
                         raise ValueError("Command exceeds the manager's delegated per-experiment allowance")
+                    # The manager may pause, stop or resume within an allocation; only the researcher enlarges one.
+                    if command.operation == "trial.control" and (command.payload.get("action") == "extend"
+                            or any(command.payload.get(key) is not None for key in ("max_steps", "wall_seconds"))):
+                        raise ValueError("More time or evaluations for a trial need researcher approval; "
+                            "file trial.extension_request explaining how the extra budget would change a decision")
                     if command.operation == "trial.create":
                         request = TrialInput(**{**command.payload, "campaign_id": command.campaign_id})
                         for schedule in request.diagnostics:
@@ -208,6 +223,10 @@ class CommandService:
                     "status": "completed", "outcome": outcome, "created_at": now(), "finished_at": now()}
                 self.store.put("work_command", record, "command.completed")
         self.workspace.dispatch_outbox()
+        if command.operation == "study.race.create" and self.workspace.thread is not None:
+            from optimization_framework.execution.race_guard import arm
+            race = self.store.get(record["outcome"]["race_id"], "adaptive_race")
+            arm(self.workspace, race["id"], race["deadline_at"])
         return record
 
     def _target(self, command, key, kind):
@@ -236,6 +255,8 @@ class CommandService:
             return self.workspace.pi.control(command.campaign_id, payload, command.id)
         if command.operation == "agent.rollback":
             return self.workspace.pi.rollback(command.campaign_id, payload)
+        if command.operation == "agent.configure":
+            return self.workspace.pi.configure(command.campaign_id, payload, command.id)
         if command.operation == "fixed_mask.run":
             from optimization_framework.agents.diagnostics import reserve
             return reserve(self.workspace, command.campaign_id, payload, command.id)
@@ -244,12 +265,12 @@ class CommandService:
             return {"model_policy_id": record["id"], "revision": record["revision"]}
         if command.operation == "discovery.start":
             if self.workspace.pi.owns(command.campaign_id):
-                raise ValueError("Pi owns this campaign. Send discovery requests through Message the PI.")
+                raise ValueError("The agent team owns this campaign. Send discovery requests through Message the lead agent.")
             session = self.workspace.discovery.start(command.campaign_id, payload, command.id)
             return {"session_id": session["id"], "session": session}
         if command.operation == "discovery.control":
             if self.workspace.pi.owns(command.campaign_id):
-                raise ValueError("This discovery session is archived. Use the PI agent controls.")
+                raise ValueError("This discovery session is archived. Use the lead agent controls.")
             session = self.workspace.discovery.control(command.campaign_id, payload)
             return {"session_id": session["id"], "session": session}
         if command.operation == "discovery.amend":
@@ -352,6 +373,17 @@ class CommandService:
                 evidence_ids=values.evidence_ids, authority=actor, rationale=values.rationale,
                 identity="cost_reconciliation_" + command.id)
             return {"receipt_id": receipt["id"], "asset_id": values.asset_id}
+        if command.operation == "asset.snapshot":
+            values = AssetSnapshotInput(**payload)
+            trial = self._target(command, "trial_id", "trial")
+            from optimization_framework.execution.worker import iter_journal
+            observation = next((row for row in iter_journal(self.workspace.job_dir(trial["id"]) / "observations.jsonl")
+                                if row.get("id") == values.observation_id and row.get("status") == "ok"), None)
+            if observation is None:
+                raise ValueError("Select an exact successful observation from this experiment's journal")
+            from optimization_framework.evaluation.jobs import snapshot_solutions
+            asset = snapshot_solutions(self.workspace, trial, [observation["candidate"]])[0]
+            return {"asset_id": asset["id"], "observation_id": values.observation_id}
         if command.operation.startswith("bundle."):
             model = {"bundle.export": BundleExportInput, "bundle.inspect": BundleInspectInput, "bundle.publish": BundlePublishInput}[command.operation]
             values = model(**payload).model_dump(mode="json", exclude={"schema_version"})
@@ -525,7 +557,30 @@ class CommandService:
             if trial["control_revision"] != values.expected_control_revision:
                 raise ValueError("Experiment controls changed; refresh before submitting another control")
             request = ControlInput(**values.model_dump(exclude={"trial_id", "expected_control_revision"}))
-            return self._trial_outcome(self.workspace.control(trial["id"], request))
+            return self._trial_outcome(self.workspace.control(trial["id"], request, authority=actor))
+        if command.operation == "trial.extension_request":
+            # The researcher approves it in the decision inbox, which runs the
+            # extension under researcher authority (research_commands.resolve).
+            values = TrialExtensionRequestInput(**payload)
+            trial = self._target(command, "trial_id", "trial")
+            if trial.get("confirmation_protocol_hash") or trial.get("execution_grant_id") or trial.get("race_phase") == "confirmation":
+                raise ValueError("A confirmatory allocation is frozen; propose a new exploratory trial instead of extending it")
+            campaign = self.store.get(command.campaign_id, "campaign")
+            lead = self.workspace.pi.owns(command.campaign_id)
+            budget = f"{values.additional_seconds:g} s" + (f" and {values.additional_evaluations} evaluations" if values.additional_evaluations else "")
+            title = f"Extend trial {trial['id']} by {budget}?"
+            decision = {"id": "extension_" + command.id, "campaign_id": command.campaign_id, "charter_version": campaign["version"],
+                "guidance_revision": self.workspace.memory.state(command.campaign_id)["guidance_revision"],
+                "question": title, "title": title, "rationale": values.rationale, "context": values.rationale,
+                "proposal": f"{'The lead agent' if lead else 'The campaign manager'} asks for {budget} more on trial {trial['id']} "
+                    f"(now {trial['wall_seconds']:g} s, {trial['max_steps']} evaluations).",
+                "options": [{"id": "0", "label": f"Extend by {budget}", "description": "Runs under your authority, subject to current campaign limits."},
+                            {"id": "1", "label": "Keep the current allocation", "description": "The requester is told and the trial is unchanged."}],
+                "recommendation": "0", "trial_id": trial["id"], "incremental_solver_calls": values.additional_evaluations,
+                "estimated_seconds": values.additional_seconds, "estimate_basis": "requested budget",
+                "requested_by": "lead" if lead else "manager", "audience": "researcher", "status": "pending", "created_at": now()}
+            self.store.put("decision", decision, "decision.created")
+            return {"decision_id": decision["id"]}
         if command.operation == "trial.validate":
             values = TrialValidationInput(**payload)
             trial = self._target(command, "trial_id", "trial")
@@ -534,6 +589,16 @@ class CommandService:
             return self._trial_outcome(self.workspace.validate_trial(trial["id"], request))
         if command.operation == "study.create":
             return {"study_id": self.workspace.create_study(command.campaign_id, StudyInput(**payload), authority=actor)["id"]}
+        if command.operation == "study.race.create":
+            race = self.workspace.racing.create(command.campaign_id, RaceCreateInput(**payload), authority=actor)
+            return {"race_id": race["id"], "study_id": race["study_id"], "race": self.workspace.racing.view(race["id"])}
+        if command.operation in {"study.race.control", "study.race.decide"}:
+            self._target(command, "race_id", "adaptive_race")
+            if command.operation == "study.race.control":
+                race = self.workspace.racing.control(command.campaign_id, RaceControlInput(**payload), authority=actor)
+            else:
+                race = self.workspace.racing.decide(command.campaign_id, RaceDecisionInput(**payload), authority=actor)
+            return {"race_id": race["id"], "race": self.workspace.racing.view(race["id"])}
         if command.operation == "study.freeze_template":
             return {"execution_id": self.workspace.study_executions.freeze(command.campaign_id, TemplateFreezeInput(**payload), authority=actor)["id"]}
         if command.operation == "study.activate":

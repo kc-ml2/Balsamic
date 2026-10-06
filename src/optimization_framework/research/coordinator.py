@@ -5,6 +5,7 @@ import threading
 import json
 from optimization_framework.contracts.base import content_hash
 from optimization_framework.contracts.requests import ResearchInput, TrialInput, ControlInput
+from optimization_framework.contracts.experiments import DELIBERATE_STOPS
 from optimization_framework.storage.sqlite import identifier, now
 from optimization_framework.research.providers import api_spend, provider_status
 
@@ -391,7 +392,7 @@ class ResearchCoordinator:
                 # A researcher's stop is a direction to leave that branch stopped.
                 current_tasks = {t["id"] for t in self.workspace.current_tasks(campaign["id"])
                                  if t["split"] != "test"}
-                eligible = [t for t in pending if t.get("stopped_by") != "researcher"
+                eligible = [t for t in pending if t.get("stopped_by") not in DELIBERATE_STOPS
                             and t.get("task_split") != "test" and t["task_id"] in current_tasks
                             and t["charter_version"] == campaign["version"]]
                 for trial in pending:

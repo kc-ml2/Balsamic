@@ -52,7 +52,7 @@ export function ProposalComposer({ state, actions, operation, parent, onClose }:
       </Field>}
       <Field label="Requested proposal count"><input aria-label="Requested proposal count" type="number" min={1} max={6} value={count} onChange={e => setCount(Number(e.target.value))} required /></Field>
       <Field label="Direction or constraints (optional)"><textarea aria-label="Direction or constraints" rows={4} value={direction} onChange={e => setDirection(e.target.value)} placeholder="For example: combine tabu memory with surrogate ranking, while keeping startup costs low." /></Field>
-      <p className="help-text">{piOwned ? 'The PI delegates generation, independent review and implementation within this campaign’s allocations.' : 'Requires an optimizer discovery session. A paused session keeps this request queued until you resume it. Missing implementations are handled by the separate implementation service. Existing resource limits apply.'}</p>
+      <p className="help-text">{piOwned ? 'The lead agent delegates generation, independent review and implementation within this campaign’s allocations.' : 'Requires an optimizer discovery session. A paused session keeps this request queued until you resume it. Missing implementations are handled by the separate implementation service. Existing resource limits apply.'}</p>
       <div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary" disabled={busy || !valid || !hasDiscovery}>{busy ? 'Sending…' : 'Send to campaign manager'}</button></div>
     </form>
   </Modal>;

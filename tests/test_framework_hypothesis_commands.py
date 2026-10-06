@@ -69,9 +69,12 @@ def test_feedback_appends_once_concurrently_and_invalidates_old_manager_guidance
     restarted = Workspace(tmp_path)
     assert restarted.commands.execute(first) == replies[0]
     assert restarted.memory.state(campaign["id"])["guidance_revision"] == 3
-    with pytest.raises(ValueError, match="researcher authorization"):
-        restarted.commands.execute(first.model_copy(update={"id": "forged_comment", "expected_guidance_revision": 3,
-            "expected_authority_hash": restarted.commands.authority_hash(campaign)}), actor="manager")
+    # An agent may comment, but its note is attributed to it and is not researcher guidance.
+    restarted.commands.execute(first.model_copy(update={"id": "agent_comment", "expected_guidance_revision": 3,
+        "expected_authority_hash": restarted.commands.authority_hash(campaign)}), actor="manager")
+    reviews = restarted.store.get(target["id"], "hypothesis")["reviews"]
+    assert [row["author"] for row in reviews].count("manager") == 1
+    assert restarted.memory.state(campaign["id"])["guidance_revision"] == 3
 
 
 def test_status_revisions_reject_aba_edits_and_nomination_remains_frozen(tmp_path):

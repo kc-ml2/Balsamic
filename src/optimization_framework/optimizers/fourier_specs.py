@@ -1,4 +1,4 @@
-"""Installed Fourier methods and their explicit execution parameters."""
+"""Installed Fourier level-set methods and their explicit execution parameters (data only; the solvers live in dqn_meent)."""
 
 PROBLEM_ID = 'meent_2d_dual_polarization_deflector'
 NAMES = {

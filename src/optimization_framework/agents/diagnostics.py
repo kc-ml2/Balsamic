@@ -69,7 +69,7 @@ def _reconcile(workspace):
             if workspace.shutdown_event.is_set():
                 return
             diagnostics = sum(j["status"] in {"starting", "running"} for j in workspace.store.list("fixed_mask_job"))
-            trials = sum(t["status"] in {"running", "pausing", "stopping"} for t in workspace.store.list("trial"))
+            trials = len(workspace.store.list_trials_in_status({"running", "pausing", "stopping"}))
             if diagnostics >= 1 or trials + diagnostics >= workspace.max_workers:
                 return
             directory.mkdir(parents=True, exist_ok=True)

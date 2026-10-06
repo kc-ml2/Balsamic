@@ -14,6 +14,7 @@ import { PrototypePicker } from './prototypePicker';
 import { ConfirmationAllocations, FrozenConfirmationAllocations, confirmationAllocationPayload } from './confirmationAllocations';
 import type { PrototypeAllocations } from './confirmationAllocations';
 import { StudyProgress, studySchedulingBudget } from './studyProgress';
+import { RaceProgress } from './raceProgress';
 
 type Props = { state: State; actions: WorkspaceActions };
 function Panel({ children, ...props }: ComponentProps<typeof BasePanel>) {
@@ -391,6 +392,7 @@ export function StudyView({ state, actions }: Props) {
   }
   return <><div className="page-heading"><div><span className="eyebrow">Scientific scope</span><h1>Study history.</h1><p>Scientific changes create a linked study. Experiment procedures and prior evidence retain their original scope.</p></div>
     <button className="button primary" onClick={() => { setOpen(true); setGoal(state.campaign?.objective || ''); setTaskIds(state.tasks.map(task => task.id)); setRequiredChecks([]); setCheckParameters({}); }}>Define a new study</button></div>
+    <RaceProgress studyId={state.campaign?.active_study_id} state={state} actions={actions} />
     <TemplateStudies state={state} actions={actions} />
     {[...(state.studies || [])].sort((a: Json, b: Json) => Number(b.id === state.campaign?.active_study_id) - Number(a.id === state.campaign?.active_study_id))
       .map((study: Json) => <Panel key={study.id} title={(study.goal || '').length > 140 ? `${study.goal.slice(0, 137)}…` : study.goal || 'Untitled study'} action={<Badge>{study.id === state.campaign?.active_study_id ? 'Current study' : 'Previous study'} · {study.scope}</Badge>}>

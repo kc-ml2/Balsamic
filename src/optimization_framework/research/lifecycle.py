@@ -100,6 +100,9 @@ def finalize(coordinator, run_id, saved):
             coordinator._save_decision(run, decision)
         from optimization_framework.campaigns.commands import DELEGATED
         dispatched = False
+        # A researcher's critique or revision of one idea is not a request for
+        # the manager to act on the suggestions it returns.
+        targeted = bool(request.get("hypothesis_id")) and request.get("mode") in {"review", "evolve"}
         for action in result.get("actions", []):
             if run.get("decision_refresh_id"):
                 action.update(requires_researcher=True, decision_refresh_id=run["decision_refresh_id"])
@@ -111,7 +114,7 @@ def finalize(coordinator, run_id, saved):
             from optimization_framework.research.action_policy import probe_execution_issue
             design_issue = probe_execution_issue(action, autonomous=True) if action["kind"] == "probe" else None
             eligible = (campaign["autonomy"] == "delegated" and not dispatched and not result.get("decisions")
-                and not (request.get("hypothesis_id") and request.get("mode") in {"review", "evolve"})
+                and not targeted
                 and not stale and not stopped and routine and not action.get("requires_researcher") and not design_issue
                 and not (result.get("usage") or {}).get("pending_reservation"))
             if eligible:
@@ -126,8 +129,9 @@ def finalize(coordinator, run_id, saved):
                 # A missing procedure is a manager design task, not a request to
                 # approve an ambiguous plan that would fail again after approval.
                 action.update(status="blocked", allocation_issue=design_issue)
-                workspace.memory.issue(run["campaign_id"], "experiment_design", design_issue, affected=action["id"])
-                store.event(run["campaign_id"], "research.action_rejected", {"record_id": action["id"]})
+                if not targeted:
+                    workspace.memory.issue(run["campaign_id"], "experiment_design", design_issue, affected=action["id"])
+                    store.event(run["campaign_id"], "research.action_rejected", {"record_id": action["id"]})
             else:
                 from optimization_framework.campaigns.decision_presentation import action_choices, brief, present_decision
                 decision = {"id": "decision_" + action["id"], "title": action["title"],

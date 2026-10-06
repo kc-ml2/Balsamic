@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import json
+import time
 
 from optimization_framework.implementations.client import ImplementationClient
 from optimization_framework.implementations.models import JobRequest, RevalidationRequest, LibraryUnavailable, check_parameters, digest
@@ -35,6 +36,10 @@ class ImplementationBridge:
         self.client = client or ImplementationClient()
         self.connection_error = None
         self.workspace_id = self.store.identity()
+        # Unsettled jobs are refetched when the library's event feed names them;
+        # this sweep covers a missed event or a library without the feed.
+        self._seen_jobs = set()
+        self._job_sweep_at = 0.0
         # Backfill cached evidence with its actual admission time. Historical
         # service timestamps cannot establish evidence before a workspace cutoff.
         from optimization_framework.evaluation.executables import record
@@ -228,7 +233,7 @@ class ImplementationBridge:
                 max_calls=max_calls, api_budget_usd=api_budget_usd,
                 model_policy=model_policy,
                 agent_parent_id=(grant["request"].get("agent_parent_id") if grant else
-                    (self.workspace.pi.configuration(campaign_id) or {}).get("pi_id") if self.workspace.pi.owns(campaign_id) else None),
+                    (self.workspace.pi.configuration(campaign_id) or {}).get("lead_id") if self.workspace.pi.owns(campaign_id) else None),
                 accounting_mode=accounting_mode).model_dump()
             if (request["spec"].get("kind") == "evaluator") != (task_id is not None):
                 raise ValueError("Commission this executable against the matching optimizer or evaluator requirement")
@@ -243,6 +248,8 @@ class ImplementationBridge:
                 research_spent = sum(api_spend(r.get("usage"))
                     + (r.get("decision_review") or {}).get("budget_hold_usd", 0)
                     for r in self.store.list("research_run", campaign_id))
+                from optimization_framework.agents.usage import charged as agent_api_spend
+                research_spent += agent_api_spend(self.store, campaign_id)
                 if research_spent + self.api_committed(campaign_id) + api_budget_usd > campaign["llm_budget_usd"] + 1e-9:
                     raise ValueError("Implementation model allocation exceeds the campaign's remaining API cap")
                 grant = {"id": identity, "campaign_id": campaign_id, "hypothesis_id": hypothesis_id,
@@ -448,9 +455,11 @@ class ImplementationBridge:
             except ValueError as exc:
                 self.connection_error = str(exc)
         changed = {event["data"].get("record_id") for event in events}
+        clock = time.monotonic()
+        sweep = clock >= self._job_sweep_at
         delivery_failed = False
-        active = [trial for trial in self.store.list("trial")
-                  if trial["status"] in {"running", "pausing", "stopping"} and (trial.get("implementation_version_id") or trial.get("evaluator_version_id"))]
+        active = [trial for trial in self.store.list_trials_in_status({"running", "pausing", "stopping"})
+                  if trial.get("implementation_version_id") or trial.get("evaluator_version_id")]
         if active:
             try:
                 versions = {version["id"]: self.cache_version(version) for version in self.client.versions()}
@@ -489,13 +498,18 @@ class ImplementationBridge:
                         self.store.put("outbox", {"id": effect_id, "campaign_id": grant["campaign_id"],
                             "kind": "implementation_submit", "grant_id": grant["id"], "status": "pending", "created_at": now()}, "effect.queued")
                     continue
+                if not sweep and grant["job_id"] in self._seen_jobs and grant["job_id"] not in changed:
+                    continue
                 job = self.client.job(grant["job_id"])
                 self._apply_job(grant, job)
+                self._seen_jobs.add(grant["job_id"])
                 self.connection_error = None
             except ValueError as exc:
                 delivery_failed = True
                 self.connection_error = str(exc)
                 self.workspace.memory.issue(grant["campaign_id"], "implementation_service", str(exc), affected=grant["id"])
+        if sweep:
+            self._job_sweep_at = clock + 60
         if events and not delivery_failed:
             self.store.put("service_event_cursor", {"id": cursor_id, "position": max(event["id"] for event in events)})
 

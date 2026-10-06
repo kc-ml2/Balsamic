@@ -88,7 +88,7 @@ def present_decision(record, action=None):
                 limits = "Proposed limits: " + "; ".join(changes) + "."
                 if limits not in proposal:
                     proposal += "\n" + limits
-    elif record.get("trial_id") and record.get("incremental_solver_calls"):
+    elif record.get("trial_id") and record.get("incremental_solver_calls") is not None:
         scope = "Only the stated extension of this experiment, subject to current limits."
     if manager:
         scope = "Internal follow-up for the campaign manager; no researcher decision is requested."

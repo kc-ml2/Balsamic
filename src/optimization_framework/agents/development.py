@@ -113,9 +113,9 @@ class DevelopmentWorkspaces:
                 self.evidence(campaign_id, evidence_id)
             config = self.controller.configuration(campaign_id)
             if not config or not config["enabled"]:
-                raise ValueError("Activate the campaign PI before creating an implementation workspace")
+                raise ValueError("Activate the campaign lead agent before creating an implementation workspace")
             record = {"id": identity, "campaign_id": campaign_id, "hypothesis_id": values.hypothesis_id,
-                "title": hypothesis["title"], "parent_agent_id": config["pi_id"], "created_at": now(),
+                "title": hypothesis["title"], "parent_agent_id": config["lead_id"], "created_at": now(),
                 "objective": values.objective, "evidence_ids": values.evidence_ids,
                 "request_key": values.request_key, "request_hash": content_hash(values.model_dump()),
                 "status": "queued", "desired_status": "running", "control_revision": 0,
@@ -148,7 +148,9 @@ class DevelopmentWorkspaces:
         request_hash = content_hash([values, actor])
         try:
             old = self.store.get(identity, "development_command")
-            if old["request_hash"] != request_hash:
+            # Commands saved before the role rename hashed actor "pi".
+            legacy = content_hash([values, "pi"]) if actor == "lead" else request_hash
+            if old["request_hash"] not in {request_hash, legacy}:
                 raise ValueError("Command identity was reused with different content")
             return old
         except KeyError:
@@ -203,7 +205,7 @@ class DevelopmentWorkspaces:
         config = self.controller.configuration(record["campaign_id"])
         if not config or not config["enabled"]:
             return
-        parent = self.store.get(config["pi_id"], "agent_session")
+        parent = self.store.get(config["lead_id"], "agent_session")
         self.controller.enqueue(parent, "pi_development_" + content_hash([record["id"], key])[:24],
             f"Implementation workspace {record['id']} ({record['title']}): {text}\n"
             "Use implementation_workspace_inspect to read current status and saved evidence. A development result is not protected validation.")
@@ -445,7 +447,7 @@ class DevelopmentWorkspaces:
                         "mechanism": len(spec.mechanism_checks), "diagnostic": len(spec.diagnostic_checks)},
                     "problem_id": spec.problem_id, "n_cells": [spec.n_cells_min, spec.n_cells_max],
                     "dependencies": spec.dependencies}, "development.envelope_frozen")
-                self.notify(record, envelope_id, f"Protected validation envelope {envelope_id} frozen with spec digest {identity_hash}. Use this ID with implementation_workspace_validate after an exact submission and explicit remaining allocation; do not reinsert the full specification into PI context.")
+                self.notify(record, envelope_id, f"Protected validation envelope {envelope_id} frozen with spec digest {identity_hash}. Use this ID with implementation_workspace_validate after an exact submission and explicit remaining allocation; do not reinsert the full specification into the lead agent's context.")
             return {k: v for k, v in saved.items() if k != "spec"}
 
     def validation_feedback(self, record):
@@ -484,8 +486,8 @@ The host campaign database, private files, protected validation fixtures, and
 Docker socket are outside this environment. Public network access is available;
 new connections to host, TailNet, and private network services are blocked.
 
-The developer and campaign PI can steer this same session. Explicit developer
-direction takes precedence over conflicting PI guidance. Reread files changed by
+The developer and the campaign lead agent can steer this same session. Explicit
+developer direction takes precedence over conflicting lead-agent guidance. Reread files changed by
 the developer before editing them. Save decisions and continuation instructions
 in `.campaign/checkpoint.md`; use `campaign_checkpoint` for progress or questions.
 Compaction and reconnects preserve this file, evidence, repository, and session.
@@ -495,7 +497,7 @@ Commit your implementation and an `implementation-manifest.json` containing
 list of repository-relative source paths), exact `dependencies`, and a
 `test_summary`. Submit the full commit hash with `campaign_submit`. The service
 captures source from that commit. A submission is not validation or publication.
-The PI commissions independent checks; failure feedback returns to this session.
+The lead agent commissions independent checks; failure feedback returns to this session.
 Use a new commit for each repair. Keep physical evaluations distinct from unit
 tests and do not claim optimizer effectiveness without campaign measurements.
 

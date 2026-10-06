@@ -6,7 +6,7 @@ function fixture() {
   return {workspace_id:'pi-workspace',campaign,campaigns:[campaign],tasks:[],trials:[],hypotheses:[],decisions:[],messages:[],events:[],algorithms:[],manager_issues:[],manager_commands:[],research_runs:[],budget:{},
     settings:{llm_configured:true,provider:{configured:true,enabled:true,provider:'pi',model:'gpt-6-astra',billing_mode:'subscription'}},
     agent_runtime:{configuration:{enabled:true,status:'running',control_revision:3,objective:'Implement H12',provider:{configured:true}},
-      agents:[{id:'pi',role:'pi',status:'waiting',model:'gpt-6-astra',reasoning_effort:'xhigh',objective:'Implement H12',control_revision:0},
+      agents:[{id:'pi',role:'lead',status:'waiting',model:'gpt-6-astra',reasoning_effort:'xhigh',objective:'Implement H12',control_revision:0},
         {id:'child',parent_agent_id:'pi',role:'methodology_specialist',status:'running',model:'gpt-6-sol',reasoning_effort:'xhigh',objective:'Inspect fixed-mask validation',control_revision:2}],
       questions:[{id:'question',status:'pending',question:'Which scientific objective should the pilot use?',reason:'Resolve conflicting objectives.'}],aliases:[]}};
 }
@@ -23,30 +23,30 @@ async function mock(page:Page,state:any,write:(body:any)=>any) {
     return route.fulfill({json:state});
   });
 }
-test('PI questions have a working answer form and expose the parent and child sessions',async({page})=>{
+test('Lead agent questions have a working answer form and expose the parent and child sessions',async({page})=>{
   const state=fixture(),writes:any[]=[];await mock(page,state,body=>{writes.push(body);state.agent_runtime.questions=[];});
-  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'PI agent campaign'});
+  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'Agent team'});
   await expect(panel).toContainText('gpt-6-astra');await expect(panel).toContainText('gpt-6-sol');
   await panel.getByRole('button',{name:'Answer this request'}).click();
-  await panel.getByLabel('Your answer to the PI').fill('Use mean TE/TM efficiency at order +1.');
-  await panel.getByRole('button',{name:'Send to PI'}).click();
-  await expect(panel).toContainText('Message saved for the PI.');
+  await panel.getByLabel('Your answer to the lead agent').fill('Use mean TE/TM efficiency at order +1.');
+  await panel.getByRole('button',{name:'Send to lead agent'}).click();
+  await expect(panel).toContainText('Message saved for the lead agent.');
   expect(writes).toHaveLength(1);expect(writes[0]).toMatchObject({operation:'agent.message',payload:{question_id:'question',mode:'steer'}});
 });
 test('network failure preserves the draft and retries the same command identity',async({page})=>{
   const state=fixture(),writes:any[]=[];await mock(page,state,body=>{writes.push(body);return writes.length===1?{status:503,json:{detail:'Temporary network failure'}}:undefined;});
-  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'PI agent campaign'});
-  await panel.getByLabel('Message the PI').fill('Continue from the saved H12 handoff.');
-  await panel.getByRole('button',{name:'Send to PI'}).click();
+  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'Agent team'});
+  await panel.getByLabel('Message the lead agent').fill('Continue from the saved H12 handoff.');
+  await panel.getByRole('button',{name:'Send to lead agent'}).click();
   await expect(panel.getByRole('alert')).toContainText('Temporary network failure');
-  await expect(panel.getByLabel('Message the PI')).toHaveValue('Continue from the saved H12 handoff.');
-  await panel.getByRole('button',{name:'Send to PI'}).click();
-  await expect(panel.getByLabel('Message the PI')).toHaveValue('');
+  await expect(panel.getByLabel('Message the lead agent')).toHaveValue('Continue from the saved H12 handoff.');
+  await panel.getByRole('button',{name:'Send to lead agent'}).click();
+  await expect(panel.getByLabel('Message the lead agent')).toHaveValue('');
   expect(writes).toHaveLength(2);expect(writes[0].id).toBe(writes[1].id);
 });
 test('pause and child cancellation pin the current control revision',async({page})=>{
   const state=fixture(),writes:any[]=[];await mock(page,state,body=>{writes.push(body);});
-  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'PI agent campaign'});
+  await page.goto('/#notebook');const panel=page.getByRole('region',{name:'Agent team'});
   await panel.getByRole('button',{name:'Pause agents',exact:true}).click();
   await expect(panel).toContainText('Pause requested');
   await panel.getByRole('button',{name:'Stop',exact:true}).click();
@@ -70,7 +70,7 @@ test('agent output renders Markdown in the sidebar and notebook without executin
   ].join('\n')}];
   await mock(page,state,()=>undefined);
   await page.goto('/#notebook/conversation');
-  for (const body of [page.getByRole('complementary',{name:'PI conversation'}),page.locator('.notebook-conversation')]) {
+  for (const body of [page.getByRole('complementary',{name:'Lead agent conversation'}),page.locator('.notebook-conversation')]) {
     await expect(body.getByRole('heading',{name:'H12 progress'})).toHaveCount(1);
     await expect(body.locator('strong').filter({hasText:'Specification saved'})).toHaveCount(1);
     await expect(body.locator('em')).toHaveText('independent review');
@@ -87,17 +87,17 @@ test('agent output renders Markdown in the sidebar and notebook without executin
 });
 
 for (const viewport of [{width:1440,height:900},{width:390,height:740}]) {
-  test(`PI history scrolls within the sidebar and keeps the reading position at ${viewport.width}px`,async({page})=>{
+  test(`Lead agent history scrolls within the sidebar and keeps the reading position at ${viewport.width}px`,async({page})=>{
     await page.setViewportSize(viewport);
     const state:any=fixture();
     state.messages=Array.from({length:25},(_,i)=>({id:`message-${i}`,agent_id:'pi',origin:'pi',role:'assistant',
       content:`### Update ${i}\n\nSaved findings for this iteration.\n\n- Check the TE efficiency\n- Check the TM efficiency`}));
     await mock(page,state,()=>undefined);
     await page.goto('/#notebook');
-    if(viewport.width<1200) await page.getByRole('button',{name:'PI agent',exact:true}).click();
-    const sidebar=page.getByRole('complementary',{name:'PI conversation'});
-    const history=sidebar.getByRole('region',{name:'PI message history'});
-    const composer=sidebar.getByLabel('Message to PI');
+    if(viewport.width<1200) await page.getByRole('button',{name:'Lead agent',exact:true}).click();
+    const sidebar=page.getByRole('complementary',{name:'Lead agent conversation'});
+    const history=sidebar.getByRole('region',{name:'Lead agent message history'});
+    const composer=sidebar.getByLabel('Message to lead agent',{exact:true});
     const gap=()=>history.evaluate(el=>el.scrollHeight-el.clientHeight-el.scrollTop);
     await expect(composer).toBeInViewport();
     await expect(sidebar.getByRole('button',{name:'Close research panel'})).toBeInViewport();

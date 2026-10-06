@@ -1,0 +1,5 @@
+{
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-v4-pro",
+  "enableInstallTelemetry": false
+}

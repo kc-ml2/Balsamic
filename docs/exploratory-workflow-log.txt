@@ -1,0 +1,305 @@
+EXPLORATORY WORKFLOW — REQUEST AND RESPONSE LOG
+Prepared: 2026-10-01
+
+Scope: The main conversation before the side-conversation boundary, followed
+by the request to create this log. Requests are condensed, not verbatim.
+Response summaries use the visible exchanges and saved repository records.
+Some early assistant replies are absent from the supplied history; those
+entries describe the issue or direction without claiming a verified fix.
+This is a historical log, not a new execution plan or completion certificate.
+
+
+SETUP AND PAPER-BASED CAMPAIGN
+
+01. Request: Install the latest dqn-meent commit and provide remote web access
+    through TailNet.
+    Summary: Established the repository/workbench and remote-access setup that
+    became the working environment for the campaign.
+
+02. Request: Pull the most recent commit.
+    Summary: Requested an update of the installed checkout. The exact revision
+    used at that exchange is not available in the visible history.
+
+03. Request: Review the paper under /home/chs/Dropbox/MEENT/Kevin/ and create a
+    campaign for its 2D grating-design problem.
+    Summary: Defined a paper-based silicon/air beam-deflector campaign, with
+    mean TE/TM diffraction efficiency as the primary optimization objective.
+
+04. Request: Guide the optimization process step by step.
+    Summary: Sought a guided workflow from problem definition and proposals
+    through implementation, evaluation, optimization, and validation.
+
+05. Request: Use kc-ml2/meent as the RCWA simulator and jLabKAIST/flrl as the
+    implementation of the paper's experiment.
+    Summary: Established the simulator and author-code references. Later
+    implementations used their physics and Fourier representation as references.
+
+06. Request: Explain why the evaluator was still marked missing when MEENT
+    could calculate diffraction efficiency.
+    Summary: Identified the gap between having a simulator and declaring a
+    runnable evaluator in the campaign. A working 2D evaluator was integrated.
+
+07. Request: Create the campaign and initial proposals, including the method
+    used in the paper.
+    Summary: Established the initial method roster around the paper approach,
+    baselines, and proposed alternatives; implementation readiness remained a
+    separate requirement.
+
+
+DISCOVERY, LIMITS, AND WORKBENCH PROBLEMS
+
+08. Request: Fix “crypto.randomUUID is not a function” when marking an issue
+    resolved.
+    Summary: Added a browser-compatible command-ID fallback for remote HTTP
+    origins where crypto.randomUUID is unavailable.
+
+09. Request: Resolve the message requiring an optimizer discovery session
+    before requesting new proposals.
+    Summary: Clarified the discovery-session prerequisite in the Research
+    notebook. The exact individual repair is not visible in this history.
+
+10. Request: Explain “Task context exceeds the bounded allowance” and what
+    the allowance means.
+    Summary: Distinguished an application/model-request context allowance
+    from numerical compute or spending budgets.
+
+11. Request: Explain why every method was marked unimplemented despite the
+    author's reference code.
+    Summary: Distinguished reference source availability from a campaign-ready,
+    callable implementation with a declared interface and validation evidence.
+
+12. Request: Explain the 213.9 KiB versus 170 KiB context limit and whether
+    method development could proceed across agents, turns, and tool calls.
+    Summary: Identified the limit as application policy rather than a limit on
+    the total development task; persistent work, retrieval, and delegation
+    became requirements for the replacement runtime.
+
+13. Request: Explain why H06 remained after asking to merge H01 and H06, and
+    whether one should be removed manually.
+    Summary: Raised a duplicate-method identity and merge-state problem. The
+    visible record does not establish that this particular merge completed.
+
+14. Request: Implement missing methods, noting their shared PPO structure or
+    conventional optimization wrapped around grating updates and MEENT.
+    Summary: Established shared representations, evaluator interfaces, and
+    reusable algorithm components as the implementation direction.
+
+15. Request: Reconsider the context cap because discovery is inevitably heavy
+    in context; explain how to circumvent it.
+    Summary: Reinforced the need for incremental evidence access and persistent
+    agent sessions instead of accumulating every source in one request.
+
+16. Request: Check whether the campaign manager handles fetch/network errors
+    smoothly.
+    Summary: Raised transport resilience as a product requirement. Later Pi
+    and command flows use saved receipts, retry reconciliation, and preserved
+    work rather than relying on a single successful response.
+
+17. Request: Resolve an “Unknown evidence identifier” error.
+    Summary: Identified exact evidence IDs and reference recovery as necessary;
+    hashes must not be reconstructed. The individual fix is not confirmed by
+    the supplied early exchanges.
+
+18. Request: Replace abrupt tool-limit failure with a “soft landing.”
+    Summary: Added saved handoffs and recovery paths for allowance exhaustion
+    so unfinished discovery work could be retained and reassigned.
+
+19. Request: Fix an inactive “Discuss this task” button after a specialist
+    reported an incomplete prerequisite.
+    Summary: Raised task-discussion wiring and prerequisite-state handling as
+    issues. The exact individual repair is not recoverable from this history.
+
+20. Request: Show the manager's request and provide a way to answer when the
+    notebook says it is waiting for direction.
+    Summary: Established visible requests and a usable reply interface as
+    essential campaign controls; later exchanges include the displayed request.
+
+21. Request: Explain why H12 needed a separate validation interface and
+    implementation allocation when the FLRL repository already existed.
+    Summary: Separated author reference code, conceptual approval, implementation
+    execution, and independent correctness checks. Reference code alone did
+    not cover H12's decoder, replay, or covariance behavior.
+
+
+REPLACING THE CHAT MANAGER WITH PI AGENTS
+
+22. Request: Plan replacement of the chat-style manager with a Codex-backed
+    Pi PI agent and specialist subagents.
+    Summary: Planned persistent agent sessions, focused delegation, tool access,
+    durable campaign state, and independent review/implementation roles.
+
+23. Request: Implement that plan.
+    Summary: Implemented the Pi campaign runtime and connected persistent
+    sessions to the workbench and structured campaign commands.
+
+24. Request: Provide browser-based Codex sign-in instead of requiring terminal
+    login.
+    Summary: Added a browser sign-in link/device-code flow to Pi integration.
+
+25. Request: “Logged in.”
+    Summary: Reported completion of authentication so the connected runtime
+    could proceed without supplying an API key.
+
+26. Request: Restore scrolling in the Pi sidebar and render basic LLM markup.
+    Summary: Updated the agent UI's scrolling and message rendering.
+
+27. Request: Commit and push the Pi-agent work on a new branch.
+    Summary: Saved the Pi integration on the pi-agent branch. This historical
+    request does not imply that all later exploratory changes were pushed.
+
+28. Request: Reduce repeated permission requests caused by the bubblewrap
+    loopback/AppArmor failure; some risk was acceptable for smoother work.
+    Summary: Diagnosed a host sandbox prerequisite and prepared a scoped host
+    repair. Distinguished authorization from an administrator action the agent
+    could not perform through campaign tools.
+
+
+FULL IMPLEMENTATION ENVIRONMENT AND AUTONOMY
+
+29. Request: Recommend a full programming interface, such as a web Pi CLI or
+    standalone IDE, instead of simplified implementation forms.
+    Summary: Recommended a browser IDE with the native Pi CLI in a persistent
+    terminal session, with desktop VS Code/SSH as another access path.
+
+30. Request: Include the interface between the developer and agents.
+    Summary: Expanded requirements to ongoing discussion, steering, tool/output
+    inspection, diffs, interruption, resumption, and PI-to-builder communication.
+
+31. Request: Write that plan in a document.
+    Summary: Saved the implementation-workspace plan in
+    docs/pi-implementation-workspace-plan.md.
+
+32. Request: Implement the documented plan.
+    Summary: Added persistent implementation workspaces, coding-session access,
+    campaign handoffs, and submission/validation integration.
+
+33. Request: Continue.
+    Summary: Continued workspace and H12 integration work rather than treating
+    the initial implementation as complete.
+
+34. Request: Explain why Pi could not itself improve protected tests and
+    increase H12's allocation from 300 to 900 seconds.
+    Summary: Identified limits in delegated configuration authority and test
+    expressivity. Work added H12 diagnostics and an explicit validation envelope.
+
+35. Request: Minimize human intervention by implementing and testing in a
+    sandbox, then admitting only the final version to experiments.
+    Summary: Moved development validation into the coding sandbox while keeping
+    exact-version submission and independent campaign admission separate.
+
+
+STANDALONE ALGORITHM LIBRARY
+
+36. Request: Implement all remaining algorithms and establish empirical
+    reliability, including eventual high-performing grating results.
+    Summary: Planned reusable implementations and layered checks, distinguishing
+    algorithm behavior from measured optical performance.
+
+37. Request: Clarification—implement algorithms first as standalone numerical
+    library features, not as parts of an experiment.
+    Summary: Changed the architecture to an independently installable
+    mask-optimizers library with caller-supplied evaluation and gradient callbacks.
+
+38. Request: Implement that plan.
+    Summary: Built the standalone library, including reference-derived methods
+    and new mask/Fourier methods, with state checkpointing and replay support.
+
+39. Request: Is the library ready?
+    Summary: Reported library readiness at the interface/behavior level;
+    campaign integration and physical effectiveness remained separate questions.
+
+40. Request: Show the tests and a report, with figures if possible.
+    Summary: Produced a standalone validation report: 36 full-suite tests,
+    NumPy-only installation checks, 60 synthetic runs, full-size mask checks,
+    and figures for search behavior and H12 covariance. These did not measure
+    MEENT diffraction efficiency.
+
+41. Request: Explain why the builder still showed “stopped” and five methods
+    showed no campaign implementation; determine campaign readiness.
+    Summary: Connected standalone methods to campaign adapters/bindings and
+    repaired implementation readiness/handoff state. H12 remained held for
+    separate campaign validation.
+
+
+PILOTS, VISUALIZATION, AND ADAPTIVE TESTING
+
+42. Request: Keep H12 on hold and pilot the remaining methods using available
+    resources for up to one hour.
+    Summary: Launched a bounded pilot with H12 excluded. The next exchange
+    corrected how the time allowance should be interpreted.
+
+43. Request: While pilots run, rebuild slow Compare results with TensorBoard
+    unless there was a valid reason not to use it.
+    Summary: Restored TensorBoard comparison curves and reduced expensive
+    result/state reads in the workbench.
+
+44. Request: Clarification—3,600 seconds means elapsed wall time; give each run
+    several minutes and choose one or two configurations per algorithm family.
+    Summary: Ran 24 trials: eight configurations, three seeds each, nine minutes
+    per trial, within a one-hour elapsed envelope. Worker time was accounted
+    separately from elapsed time.
+
+45. Request: Is everything over?
+    Summary: Confirmed the longer pilot had finished in about 56 minutes.
+    Reports included learning curves, seed endpoints, and best masks. Time
+    exhaustion did not establish optimizer convergence or a decisive winner.
+
+46. Request: Plan efficient, structured testing: which tests first/next, how
+    many to parallelize, and how to identify promising methods.
+    Summary: Designed numerical preflight, resource calibration, staged
+    development, adaptive continuation/replication, fresh-seed confirmation,
+    and final numerical validation. Slow learners and seed outliers received
+    explicit protection against premature elimination.
+
+47. Request: “Kee.”
+    Summary: Incomplete message; the following request supplied the actionable
+    instruction. This fragment is not treated as independent authorization.
+
+48. Request: Keep the plan in a file and run it.
+    Summary: Saved docs/adaptive-algorithm-testing.md, implemented a durable
+    controller and monitoring, and launched the protocol with a sixteen-hour
+    elapsed cutoff. Actual-mask checks found RCWA truncation sensitivity in
+    several methods, so higher-order preflight was underway before algorithm
+    comparisons. Calibration, development, and confirmation were subsequent
+    stages, not completed results at this point. H12 remained held.
+
+
+DOCUMENTING THE EXPERIENCE
+
+49. Request: Create a dedicated text log containing the user's requests and
+    quick action/answer summaries, for designing a more structured workflow.
+    Summary: Created this chronological log. Only the log file was changed for
+    this side-conversation request; no campaign or experiment was controlled.
+
+
+MAIN ARTIFACTS
+
+Campaign repository:
+  /home/chs/Work/dqn-meent
+
+Standalone algorithm library:
+  /home/chs/Work/mask-optimizers
+
+Pi runtime and implementation workspace documents:
+  docs/pi-agent-harness.md
+  docs/pi-implementation-workspace-plan.md
+
+Algorithm/campaign integration notes:
+  docs/flrl-implementations.md
+
+Standalone test report and figures:
+  /home/chs/Work/mask-optimizers/reports/standalone-validation-20260930/REPORT.md
+
+Longer pilot report and figures:
+  runs/pilots/dual-pol-long-20261001/report.md
+
+Adaptive testing plan:
+  docs/adaptive-algorithm-testing.md
+
+Actual-mask numerical preflight log:
+  runs/pilots/adaptive-20261001/preflight/preflight-report.md
+
+The distinction that emerged throughout the conversation was between a saved
+idea, available reference code, a working standalone algorithm, campaign
+integration, correctness/numerical evidence, and empirical effectiveness.
+Progress at one level did not automatically establish the next.

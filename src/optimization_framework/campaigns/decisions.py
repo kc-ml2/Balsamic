@@ -27,11 +27,11 @@ def public_decision(workspace, record):
     action = _get(workspace, record.get("action_id"), "action")
     presentation = present_decision(record, action)
     source_guidance = (action or {}).get("guidance_revision", record.get("guidance_revision"))
-    if source_guidance is None and (record.get("action_id") or record.get("incremental_solver_calls")):
+    if source_guidance is None and (record.get("action_id") or record.get("incremental_solver_calls") is not None):
         source_guidance = (_get(workspace, record.get("research_run_id"), "research_run") or {}).get("guidance_revision")
     source_charter = record.get("charter_version")
     executable = (["accept"] if record.get("action_id") else
-        ["0"] if record.get("trial_id") and record.get("incremental_solver_calls") else [])
+        ["0"] if record.get("trial_id") and record.get("incremental_solver_calls") is not None else [])
     stale = bool(executable) and (source_charter != campaign["version"] or
         (action or {}).get("charter_version", source_charter) != campaign["version"] or
         source_guidance is not None and source_guidance != current_guidance)

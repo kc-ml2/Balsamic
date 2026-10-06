@@ -285,3 +285,42 @@ def test_paused_undelivered_message_is_requeued_on_resume(prepared):
     w.pi.control(c['id'],{'action':'resume','expected_control_revision':1},'resume')
     resumed=w.store.get(w.store.get(run['id'],'agent_run')['superseded_by'],'agent_run')
     assert resumed['input']=='Important direction' and resumed['status']=='queued'
+
+
+def test_agents_are_inspected_on_notice_or_sweep_not_on_every_pass(prepared):
+    w,c,a,r = prepared
+    r = w.store.get(r['id'],'agent_run'); r['status']='running'; w.store.put('agent_run',r)
+    child = w.pi.create_agent(c['id'],'methodology_specialist','Review','child',parent_id=a['id'])
+    client=Client(); inspected=[]; statuses=[]
+    client.inspect=lambda agent_id, after=0: inspected.append(agent_id) or {'runs':{},'events':[],'cursor':0}
+    client.status=lambda: statuses.append(1) or {'configured':True}
+    w.pi.client=client
+    w.pi._sync(c['id'])
+    assert sorted(inspected) == sorted([a['id'], child['id']]) and len(statuses) == 1
+    inspected.clear(); w.pi._sync(c['id'])
+    assert inspected == [] and len(statuses) == 1
+    assert not w.pi._due(c['id'])
+    w.pi.notify([child['id']]); w.pi.threads[c['id']].join(5)
+    assert inspected == [child['id']]
+
+
+def test_lead_extension_needs_researcher_approval_and_the_answer_wakes_the_lead(prepared):
+    w, c, a, r = prepared
+    task = w.current_tasks(c['id'])[0]
+    created = invoke(prepared, 'campaign_command', {'operation': 'trial.create', 'guidance_revision': 0, 'request_key': 'trial',
+        'payload': {'task_id': task['id'], 'algorithm': 'coordinate', 'max_steps': 2, 'wall_seconds': 5}}, 'trial')
+    trial = w.store.get(created['outcome']['trial_id'], 'trial')
+    refused = invoke(prepared, 'campaign_command', {'operation': 'trial.control', 'guidance_revision': 0, 'request_key': 'extend',
+        'payload': {'trial_id': trial['id'], 'action': 'extend', 'expected_control_revision': 0, 'wall_seconds': 9}}, 'extend')
+    assert 'researcher approval' in refused['error']
+    filed = invoke(prepared, 'campaign_command', {'operation': 'trial.extension_request', 'guidance_revision': 0, 'request_key': 'more_time',
+        'payload': {'trial_id': trial['id'], 'additional_seconds': 4, 'rationale': 'The curve is still improving'}}, 'more_time')
+    decision = w.store.get(filed['outcome']['decision_id'], 'decision')
+    assert decision['requested_by'] == 'lead' and w.store.get(trial['id'], 'trial')['wall_seconds'] == 5
+    w.commands.execute(Command(id='approve', campaign_id=c['id'], expected_revision=w.store.get(c['id'], 'campaign')['version'],
+        operation='decision.resolve', payload={'decision_id': decision['id'], 'choice': '0', 'comment': 'Go ahead',
+        'expected_resolution_revision': 0}))
+    assert w.store.get(trial['id'], 'trial')['wall_seconds'] == 9
+    w.pi._campaign_events(c['id'])
+    woken = [run for run in w.store.list('agent_run') if run['id'].startswith('pi_events_')]
+    assert woken and 'decision.resolved' in woken[-1]['input']

@@ -1,5 +1,6 @@
 """Durable campaign inputs and consumption positions, independent of model calls."""
 from optimization_framework.contracts.base import content_hash
+from optimization_framework.contracts.experiments import DELIBERATE_STOPS
 from optimization_framework.storage.sqlite import now
 
 
@@ -39,7 +40,8 @@ def consume_events(workspace, campaign_id):
             if record.get("campaign_id") != campaign_id:
                 continue
             if kind == "trial":
-                if record["status"] in {"queued", "running", "stopping", "pausing", "paused"} or record.get("stopped_by") == "researcher":
+                # A deliberate stop is a direction, and the manager's own stop must not summon it.
+                if record["status"] in {"queued", "running", "stopping", "pausing", "paused"} or record.get("stopped_by") in DELIBERATE_STOPS:
                     continue
                 revision = [record.get("attempt", 0), "evidence"]
             elif kind == "implementation_grant":

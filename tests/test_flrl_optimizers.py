@@ -9,7 +9,7 @@ pytest.importorskip('meent')
 
 from dqn_meent.fourier import FourierGeometry
 from dqn_meent.flrl_optimizers import tangent_frame
-from dqn_meent.flrl_specs import NAMES
+from optimization_framework.optimizers.fourier_specs import NAMES
 from dqn_meent.problem_2d import Meent2DProblem
 from optimization_framework.contracts.problems import Observation
 from optimization_framework.optimizers.registry import create, capability_reason

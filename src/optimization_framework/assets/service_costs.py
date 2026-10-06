@@ -158,6 +158,11 @@ def runtime_asset(catalog, receipt):
 
 def reconcile_workspace(workspace):
     """Recover terminal accounting after process loss, and admit later receipts."""
+    kinds = ("research_run", "runtime_resolution_receipt", "cost_ingestion")
+    stamp = workspace.store.revision(*kinds)
+    if getattr(workspace, "_costs_reconciled_at", None) == stamp:
+        return
+    clean = True
     sources = [("research_run", row) for row in workspace.store.list("research_run") if row["status"] not in {"running", "stopping"}]
     sources += [("runtime_resolution_receipt", row) for row in workspace.store.list("runtime_resolution_receipt")]
     for kind, row in sources:
@@ -174,7 +179,11 @@ def reconcile_workspace(workspace):
                 workspace.store.put("cost_ingestion", {"id": identity, "campaign_id": row["campaign_id"],
                     "receipt_hash": receipt_hash, "asset_id": asset["id"]})
         except (ValueError, KeyError) as exc:
+            clean = False
             workspace.memory.issue(row["campaign_id"], "cost_reconciliation", str(exc), affected=row["id"])
+    if clean:
+        # Our own ingestion writes count too; the next pass confirms a fixed point.
+        workspace._costs_reconciled_at = workspace.store.revision(*kinds)
 
 
 def record_implementation_job(catalog, job):

@@ -71,15 +71,33 @@ def test_controls_cannot_target_another_campaign_or_escalate_manager_authority(t
     request = control(workspace, trial, "stop", "wrong_campaign")
     with pytest.raises(ValueError, match="another campaign"):
         workspace.commands.execute(request.model_copy(update={"campaign_id": other["id"], "expected_revision": other["version"]}))
-    request = request.model_copy(update={"expected_guidance_revision": 0,
-        "expected_authority_hash": workspace.commands.authority_hash(campaign)})
-    with pytest.raises(ValueError, match="researcher authorization"):
-        workspace.commands.execute(request, actor="manager")
+    pinned = {"expected_guidance_revision": 0, "expected_authority_hash": workspace.commands.authority_hash(campaign)}
+    request = request.model_copy(update=pinned)
+    # The manager may stop or pause within an allocation, but only the researcher enlarges one.
+    with pytest.raises(ValueError, match="need researcher approval"):
+        workspace.commands.execute(control(workspace, trial, "extend", "agent_escalation", wall_seconds=20)
+            .model_copy(update=pinned), actor="manager")
     with pytest.raises(ValueError, match="expected_control_revision"):
         workspace.commands.execute(request.model_copy(update={"payload": {"trial_id": trial["id"], "action": "pause"}}))
     assert workspace.store.get(trial["id"], "trial")["status"] == "queued"
     assert workspace.store.list("outbox") == []
     assert len(workspace.store.list("command_rejection")) == 3
+    filed = workspace.commands.execute(command(workspace, campaign["id"], "trial.extension_request", {"trial_id": trial["id"],
+        "additional_seconds": 20, "rationale": "The curve is still improving at the time limit."}, "agent_extension_request")
+        .model_copy(update=pinned), actor="manager")
+    decision = workspace.store.get(filed["outcome"]["decision_id"], "decision")
+    assert decision["requested_by"] == "manager" and decision["status"] == "pending"
+    assert workspace.store.get(trial["id"], "trial")["wall_seconds"] == 10
+    workspace.commands.execute(command(workspace, campaign["id"], "decision.resolve", {"decision_id": decision["id"],
+        "choice": "0", "comment": "Worth it", "expected_resolution_revision": 0}, "approve_extension"))
+    assert workspace.store.get(trial["id"], "trial")["wall_seconds"] == 30
+    assert [row["authority"] for row in workspace.store.list("budget_amendment")] == ["researcher"]
+    current = {"expected_guidance_revision": workspace.memory.state(campaign["id"])["guidance_revision"],
+        "expected_authority_hash": workspace.commands.authority_hash(workspace.store.get(campaign["id"], "campaign"))}
+    workspace.commands.execute(control(workspace, workspace.store.get(trial["id"], "trial"), "stop", "agent_stop")
+        .model_copy(update=current), actor="manager")
+    stopped = workspace.store.get(trial["id"], "trial")
+    assert (stopped["status"], stopped["stopped_by"], stopped["reason"]) == ("stopped", "manager", "Stopped by the campaign manager")
     schemas = workspace.commands.describe()
     assert "expected_control_revision" in schemas["trial.control"]["payload_schema"]["required"]
     assert not schemas["trial.validate"]["delegable"]

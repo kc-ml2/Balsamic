@@ -1,4 +1,4 @@
-"""Implementation-library adapter to PI-owned persistent workers, not LLMAdapter."""
+"""Implementation-library adapter to lead-agent-owned persistent workers, not LLMAdapter."""
 import json
 import os
 import time

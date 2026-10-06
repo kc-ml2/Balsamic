@@ -19,6 +19,7 @@ from optimization_framework.storage.sqlite import Store, atomic_json, identifier
 from optimization_framework.evaluation.registry import problems
 from optimization_framework.contracts.problems import ProblemInstance
 from optimization_framework.contracts.experiments import StudySpec, ExperimentSpec, ImplementationVersion, BudgetAmendment, CompletionCondition, study_for_tasks, task_in_study
+from optimization_framework.contracts.experiments import DELIBERATE_STOPS
 from optimization_framework.contracts.base import content_hash
 from optimization_framework.optimizers.registry import METHODS, capability_reason
 from optimization_framework.execution.source import snapshot
@@ -92,6 +93,8 @@ class Workspace:
         self.resources = ResourceLedger(self.store)
         from optimization_framework.execution.studies import StudyExecutionService
         self.study_executions = StudyExecutionService(self)
+        from optimization_framework.execution.racing import AdaptiveRacing
+        self.racing = AdaptiveRacing(self)
         self.maintenance_thread = None
         self.on_manager_tick = None
         from optimization_framework.research.discovery.controller import DiscoveryController
@@ -111,6 +114,10 @@ class Workspace:
         self.shutdown_event.clear()
         self.agent_log.project_pending()
         self.reconcile()
+        from optimization_framework.execution.race_guard import arm
+        for race in self.store.list("adaptive_race"):
+            if race["status"] in {"preflight", "running", "paused"}:
+                arm(self, race["id"], race["deadline_at"])
         from optimization_framework.research.lifecycle import recover
         recover(self)
         self.discovery.recover()
@@ -139,6 +146,7 @@ class Workspace:
                 from optimization_framework.evaluation.diagnostics import reconcile as reconcile_diagnostics
                 reconcile_diagnostics(self)
                 self.study_executions.reconcile()
+                self.racing.tick()
                 from optimization_framework.agents.diagnostics import reconcile as reconcile_fixed_masks
                 reconcile_fixed_masks(self)
                 self.confirmations.reconcile_reports(on_error=self.memory.issue)
@@ -474,6 +482,12 @@ class Workspace:
         with self.lock, self.store.transaction():
             self.check_manager_context(request.campaign_id, expected_context)
             campaign = self.store.get(request.campaign_id, "campaign")
+            if request.race_id:
+                race = self.store.get(request.race_id, "adaptive_race")
+                if race["campaign_id"] != request.campaign_id or race["status"] not in {"preflight", "running", "paused"}:
+                    raise ValueError("Select an open adaptive race belonging to this campaign")
+                if not request.race_phase:
+                    raise ValueError("Declare the adaptive race execution phase")
             if request.hypothesis_id and validation is None:
                 from optimization_framework.research.discovery.proposals import readiness as proposal_readiness
                 review = proposal_readiness(self.store, self.store.get(request.hypothesis_id, "hypothesis"))
@@ -737,7 +751,7 @@ class Workspace:
                 frozen = ExperimentSpec(id=record["id"] + "_spec", campaign_id=campaign["id"], study_id=record["study_id"],
                     problem=problem, implementation=method, parameters={key: record[key] for key in
                         ("algorithm", "algorithm_config", "training", "recipe") if key in record}, seed=record["seed"],
-                    schedule={"steps": record["schedule_steps"], **({"evaluator": {key: record[key] for key in
+                    schedule={"steps": record["schedule_steps"], "numerical_threads": record["numerical_threads"], **({"evaluator": {key: record[key] for key in
                         ("evaluator_version_id", "evaluator_artifact_digest", "evaluator_runtime_digest")}} if evaluator_bundle else {}),
                         **({"isolation_policy": record["isolation_policy"]} if selected_isolation else {}),
                         **({"reproduction": reproduction} if reproduction is not None else {}),
@@ -857,6 +871,9 @@ class Workspace:
 
     def _queue_recipe(self, trial, recipe, request, *, extra=None, authority="researcher", require_only=False, frozen_subjects=None):
         from optimization_framework.evaluation.jobs import snapshot_solutions, requirements
+        if trial.get("race_id"):
+            request = request.model_copy(update={"race_id": trial["race_id"], "race_phase": "validation" if trial.get("race_phase") == "confirmation" else trial.get("race_phase", "preflight"),
+                "numerical_threads": trial.get("numerical_threads", 1)})
         with self.lock, self.store.transaction():
             candidates = recipe.get("subjects", [])
             subjects = (frozen_subjects if frozen_subjects is not None else snapshot_solutions(self, trial, candidates)) if candidates and recipe.get("validation_rule", {}).get("subject") != "evaluator" else []
@@ -890,9 +907,11 @@ class Workspace:
                 **({"independent_countercheck": True} if trial.get("study_execution_id") else {}),
                 **({"source_trial_id": trial["id"]} if trial.get("execution_manifest") else {})})
 
-    def control(self, trial_id, command: ControlInput):
+    def control(self, trial_id, command: ControlInput, *, authority="researcher", reason=None):
+        """authority is who acted: researcher, manager, or a budget/deadline rule that stopped the trial."""
         with self.lock, self.store.transaction():
             trial = self.store.get(trial_id, "trial")
+            self.racing.guard_control(trial, command)
             if trial.get("confirmation_protocol_id") and command.action in {"resume", "extend"} and any(
                     item["protocol_id"] == trial["confirmation_protocol_id"] for item in self.store.list("confirmation_release", trial["campaign_id"])):
                 raise ValueError("This confirmation protocol is closed; preserve its result and create a new study")
@@ -910,8 +929,12 @@ class Workspace:
             elif command.action == "stop":
                 if status not in ACTIVE | {"paused", "interrupted"}:
                     return trial
-                trial.update(status="stopping" if alive(trial) else "stopped", stop_requested_at=time.time(),
-                             stopped_by="researcher", reason="Stopped by researcher")
+                if reason is None:
+                    reason = ("Stopped by researcher" if authority == "researcher" else
+                        ("Stopped by the lead agent" if self.pi.owns(trial["campaign_id"]) else "Stopped by the campaign manager")
+                        if authority == "manager" else f"Stopped by {authority}")
+                trial.update(status="stopping" if alive(trial) else "stopped" if authority in DELIBERATE_STOPS else "budget_exhausted",
+                             stop_requested_at=time.time(), stopped_by=authority, reason=reason)
             elif command.action == "pause":
                 if status not in {"queued", "running"}:
                     raise ValueError("Only queued or running trials can be paused")
@@ -961,7 +984,7 @@ class Workspace:
             if (trial["max_steps"], trial["wall_seconds"]) != previous_allocation:
                 amendment = BudgetAmendment(id=identifier("amendment"), experiment_id=trial_id,
                     campaign_id=trial["campaign_id"], previous_count=previous_allocation[0], previous_wall_seconds=previous_allocation[1],
-                    count=trial["max_steps"], wall_seconds=trial["wall_seconds"], authority="researcher",
+                    count=trial["max_steps"], wall_seconds=trial["wall_seconds"], authority=authority,
                     rationale=command.rationale, created_at=now()).model_dump(mode="json")
                 entries.append(("budget_amendment", {**amendment, "content_hash": content_hash(amendment)}, "budget.amended"))
             effect = {"id": f"control_{trial['id']}_{trial['control_revision']}", "campaign_id": trial["campaign_id"],
@@ -1138,8 +1161,9 @@ class Workspace:
             for key in list(env):
                 if key.startswith("GRATING_LLM_") or key in {"OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"}:
                     env.pop(key)
-            env.update(PYTHONPATH=str(code), PYTHONUNBUFFERED="1", OPENBLAS_NUM_THREADS="1",
-                       OMP_NUM_THREADS="1", MKL_NUM_THREADS="1", MPLBACKEND="Agg")
+            threads = str(trial.get("numerical_threads", 1))
+            env.update(PYTHONPATH=str(code), PYTHONUNBUFFERED="1", OPENBLAS_NUM_THREADS=threads,
+                       OMP_NUM_THREADS=threads, MKL_NUM_THREADS=threads, MPLBACKEND="Agg")
             with (directory / "worker.log").open("ab") as log:
                 module = "optimization_framework.execution.worker" if trial.get("execution_contract") == 1 else "dqn_meent.workspace.worker"
                 process = subprocess.Popen([sys.executable, "-m", module, "--directory", str(directory)],
@@ -1275,7 +1299,7 @@ class Workspace:
                     trial["result"] = result
                     if not trial.get("reason"):
                         trial["reason"] = result.get("reason")
-                    if trial.get("stopped_by") == "researcher":
+                    if trial.get("stopped_by") in DELIBERATE_STOPS:
                         trial["status"] = "stopped"
                     elif trial.get("stopped_by") in {"budget", "deadline"}:
                         trial["status"] = "budget_exhausted"
@@ -1295,7 +1319,7 @@ class Workspace:
                     trial["research_pending"] = True
                     changed = True
                 elif not is_alive:
-                    trial["status"] = "stopped" if trial.get("stopped_by") == "researcher" else "budget_exhausted" if trial.get("stopped_by") in {"budget", "deadline"} else "interrupted"
+                    trial["status"] = "stopped" if trial.get("stopped_by") in DELIBERATE_STOPS else "budget_exhausted" if trial.get("stopped_by") in {"budget", "deadline"} else "interrupted"
                     trial["reason"] = trial.get("reason") or "Worker exited without a terminal record; inspect logs or resume its checkpoint"
                     trial["finished_at"] = now()
                     self.store.event(trial["campaign_id"], "trial.interrupted", {"trial_id": trial["id"]})
@@ -1321,13 +1345,18 @@ class Workspace:
                     for trial in queued:
                         if free <= 0:
                             break
+                        if trial.get("race_id") and not self.racing.admission(trial, [row for row in trials if row["status"] in LIVE]):
+                            continue
                         if trial.get("execution_grant_id"):
                             grant = self.store.get(trial["execution_grant_id"], "execution_grant")
-                            occupied = sum(t["status"] in LIVE and t.get("execution_grant_id") == grant["id"] for t in self.store.list("trial"))
+                            occupied = sum(t["status"] in LIVE and t.get("execution_grant_id") == grant["id"] for t in self.store.list_trials_in_status(LIVE))
                             if occupied >= grant["max_workers"]:
                                 continue
                         try:
                             self._start_trial(trial)
+                            # Include this launch in resource admission for the next
+                            # queued member of the same scheduler pass.
+                            trial["status"] = "running"
                             free -= 1
                         except Exception as exc:
                             trial.update(status="failed", reason=str(exc), finished_at=now())

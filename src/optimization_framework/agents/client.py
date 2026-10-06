@@ -43,7 +43,8 @@ class PiClient:
         return self.request("POST", f"/v1/agents/{agent['id']}/runs", {
             "run_id": run["id"], "text": run["input"], "mode": run.get("mode", "follow_up"),
             "deadline_at": agent.get("deadline_at"),
-            "spec": {"model": agent["model"], "effort": agent["reasoning_effort"], "role": agent["role"]}})
+            "spec": {"provider": agent.get("provider") or "openai-codex", "model": agent["model"],
+                     "effort": agent["reasoning_effort"], "role": agent["role"]}})
 
     def control(self, agent_id, action):
         return self.request("POST", f"/v1/agents/{agent_id}/control", {"action": action})

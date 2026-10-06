@@ -197,6 +197,11 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     def health():
         return {"status": "ok", "service": "grating-lab", "max_workers": workspace.max_workers}
 
+    @app.get("/api/v1/resources")
+    def resource_observations(campaign_id: str | None = None):
+        from optimization_framework.execution.observability import get_observer
+        return get_observer(workspace).snapshot(campaign_id)
+
     @app.get("/api/v1/problems")
     def problem_catalog(campaign_id: str | None = None):
         from optimization_framework.evaluation.registry import problems
@@ -290,6 +295,18 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
         from optimization_framework.analysis.studies import selection_assessment
         with workspace.lock, workspace.store.transaction():
             return {key: value for key, value in selection_assessment(workspace.store, study_id).items() if key != "evidence"}
+
+    @app.get("/api/v1/studies/{study_id}/race")
+    def study_race(study_id: str):
+        workspace.store.get(study_id, "study")
+        matches = [race for race in workspace.store.list("adaptive_race")
+                   if race.get("study_id") == study_id
+                   or (race.get("confirmation") or {}).get("study_id") == study_id]
+        return {"race": workspace.racing.view(matches[-1]["id"]) if matches else None}
+
+    @app.get("/api/v1/races/{race_id}")
+    def adaptive_race(race_id: str):
+        return {"race": workspace.racing.view(race_id)}
 
     @app.post("/api/v1/campaigns/{campaign_id}/studies", status_code=201)
     def create_study(campaign_id: str, body: StudyInput, request: Request):
@@ -403,9 +420,13 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
         recent_events = workspace.store.recent_events(current) if current else []
         provider = workspace.models.config(current, "campaign_manager") if current else provider_status()
         if current and workspace.pi.owns(current):
-            connection = workspace.pi.configuration(current).get("provider", {})
-            provider = {**provider, **connection, "provider": "pi", "model": "gpt-6-astra",
-                "billing_mode": "subscription", "label": "Pi / OpenAI Codex", "enabled": provider.get("enabled", True)}
+            config = workspace.pi.configuration(current)
+            connection = config.get("provider", {})
+            default = (config.get("models") or {}).get("default") or {}
+            billing = (connection.get("providers") or {}).get(default.get("provider"), {}).get("billing", "unknown")
+            provider = {**provider, **connection, "provider": "pi", "model": default.get("model"),
+                "billing_mode": billing, "label": f"Pi / {default.get('provider')}", "llm_family": config.get("llm_family"),
+                "enabled": provider.get("enabled", True)}
         response = {"workspace_id": workspace_id, "campaigns": campaigns, "campaign": campaign, "algorithms": ALGORITHMS,
                     "settings": {"llm_configured": provider["configured"], "model": provider["model"],
                                  "provider": provider, "max_workers": workspace.max_workers}}
@@ -414,12 +435,10 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
         for kind, name in (("task", "tasks"), ("hypothesis", "hypotheses"), ("trial", "trials"),
                            ("decision", "decisions"), ("message", "messages"), ("action", "actions"),
                            ("source", "sources")):
-            rows = workspace.store.list(kind, current) if current else []
+            rows = (workspace.store.list_compact_trials(current) if kind == "trial" else workspace.store.list(kind, current)) if current else []
             if kind == "task":
                 rows = [{**workspace.evaluators.task_view(r), "evaluator_readiness": workspace.evaluators.readiness(r)}
                         for r in rows if not r.get("archived")]
-            if kind == "trial":
-                rows = [compact_trial(r) for r in rows]
             if kind == "hypothesis":
                 from optimization_framework.research.discovery.proposals import readiness as proposal_readiness
                 rows = [{**h, "implementation_readiness": workspace.implementations.readiness(h),
@@ -471,8 +490,9 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
             response["implementation_library"] = workspace.implementations.catalog()
             from optimization_framework.implementations.references import catalog as reference_catalog
             response["implementation_library"]["references"] = reference_catalog(workspace.store, current)
-            response["budget"] = {"allocated_seconds": workspace.allocated_seconds(current),
-                "spent_seconds": workspace.resources.assessment(current)["actual_seconds"],
+            assessment = workspace.resources.assessment(current)
+            response["budget"] = {"allocated_seconds": assessment["allocated_seconds"],
+                "spent_seconds": assessment["actual_seconds"],
                 "cap_seconds": campaign["compute_budget_seconds"],
                 "llm_spent_usd": sum(api_spend(r.get("usage")) for r in response["research_runs"]) + sum(api_spend(g.get("usage")) for g in response["implementation_jobs"]),
                 "implementation_api_committed_usd": workspace.implementations.api_committed(current),

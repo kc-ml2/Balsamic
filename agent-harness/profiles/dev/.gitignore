@@ -1,0 +1,9 @@
+# Pi runtime state written into the agent directory; only configuration is versioned.
+sessions/
+tmp/
+tools/
+bin/
+npm/
+git/
+models-store.json
+auth.json

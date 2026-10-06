@@ -14,6 +14,15 @@ CONTEXT_LIMIT = 96 * 1024
 GUIDANCE_LIMIT = 48 * 1024
 
 
+def content_key(revision):
+    """Identity of a context revision's content, ignoring its number, cursor and clock."""
+    document = revision["document"]
+    body = document.split("\n---\n", 1)[1] if document.startswith("---\n") else document
+    structured = {key: value for key, value in (revision.get("structured") or {}).items() if key != "revision"}
+    return digest([body, structured, revision.get("guidance"), revision.get("source_ids"),
+                   revision.get("charter_version"), revision.get("guidance_revision")])
+
+
 class CampaignMemory:
     def __init__(self, workspace):
         self.workspace = workspace
@@ -263,6 +272,15 @@ class CampaignMemory:
             revision = {"id": identifier("context"), **metadata, "guidance": state["guidance"], "document": document,
                         "structured": structured,
                         "document_hash": digest(document), "source_ids": [item["id"] for _, item in records]}
+            current = self.store.get(state["context_id"], "context_revision") if state["context_id"] else None
+            if current and "structured" in current and content_key(current) == content_key(revision):
+                # Most events (progress, costs, logs) do not change the context;
+                # advance the cursor instead of storing an identical snapshot.
+                state.update(event_cursor=cursor)
+                self.store.put("manager_state", state)
+                if not self.store.in_transaction and not (self.workspace.directory / "campaigns" / campaign_id / "manager" / "context.md").exists():
+                    self._project(campaign_id, current, records)
+                return current
             state.update(revision=metadata["revision"], context_id=revision["id"], event_cursor=cursor)
             self.store.put_many([("context_revision", revision, None), ("manager_state", state, None)])
             if not self.store.in_transaction:

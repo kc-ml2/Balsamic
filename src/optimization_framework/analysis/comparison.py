@@ -13,6 +13,8 @@ from collections import Counter, defaultdict
 from dataclasses import asdict
 from typing import Any
 
+from optimization_framework.contracts.experiments import DELIBERATE_STOPS
+
 import numpy as np
 
 from optimization_framework.evaluation.registry import problems
@@ -136,7 +138,7 @@ def _allocation(trial: dict) -> tuple[Any, Any]:
 
 def _complete(trial: dict) -> bool:
     status = trial.get("status")
-    if trial.get("stopped_by") == "researcher":
+    if trial.get("stopped_by") in DELIBERATE_STOPS:
         return False
     if status == "completed":
         return True

@@ -100,7 +100,10 @@ class ScalarExporter:
         return self.writers[trial_id]
 
     def sync_once(self):
-        for trial in self.workspace.store.list("trial"):
+        headers = getattr(self.workspace.store, "list_trial_headers", None)
+        # Small legacy/test adapters can still supply a trial listing. The
+        # application Store reads only metadata, even for unchanged journals.
+        for trial in headers() if headers else self.workspace.store.list("trial"):
             trial_id = trial["id"]
             path = self.workspace.job_dir(trial_id) / "metrics.jsonl"
             try:

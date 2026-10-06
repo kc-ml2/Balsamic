@@ -35,9 +35,7 @@ class ResourceLedger:
             row = totals.setdefault(None, {"actual": 0.0, "committed": 0.0})
             row["actual"] += actual
             row["committed"] += max(actual, diagnostic["wall_seconds"]) if diagnostic["status"] in {"queued", "starting", "running"} else actual
-        for trial in self.store.list("trial", campaign_id):
-            if trial["id"] == exclude:
-                continue
+        for trial in self.store.list_trial_costs(campaign_id, exclude=exclude):
             grant = trial.get("execution_grant_id")
             actual = spent(trial)
             row = totals.setdefault(grant, {"actual": 0.0, "committed": 0.0})
@@ -121,8 +119,8 @@ class ResourceLedger:
                 return self.store.get(identity, "execution_grant_release")
             except KeyError:
                 pass
-            active = [row for row in self.store.list("trial", grant["campaign_id"])
-                      if row.get("execution_grant_id") == grant_id and row["status"] in ACTIVE]
+            active = [row for row in self.store.list_trials_in_status(ACTIVE, grant["campaign_id"])
+                      if row.get("execution_grant_id") == grant_id]
             pending = [row for row in self.store.list("diagnostic_grant", grant["campaign_id"])
                        if row.get("execution_grant_id") == grant_id and row["status"] == "reserved"]
             pending += [row for row in self.store.list("execution_check_grant", grant["campaign_id"])
