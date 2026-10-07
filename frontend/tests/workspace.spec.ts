@@ -188,6 +188,16 @@ test('mobile navigation and dialog escape work without a horizontal page overflo
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 
+test('no model provider is selected by default', async ({ page }) => {
+  await mockWorkspace(page, { ...base, settings: { llm_configured: false, model: null,
+    provider: { provider: 'none', billing_mode: 'none', model: null, enabled: false, configured: false } } });
+  await page.goto('/#problem');
+  const panel = page.getByRole('complementary', { name: 'Research conversation' });
+  if (!(await panel.isVisible())) await page.getByRole('button', { name: 'Campaign manager', exact: true }).click();
+  await expect(panel.getByRole('link', { name: 'No model provider · Models', exact: true })).toBeVisible();
+  await expect(panel.getByText(/No model provider is selected/)).toBeVisible();
+});
+
 test('deferred Codex setup keeps experiments available and distinguishes the API budget', async ({ page }) => {
   const { writes } = await mockWorkspace(page, { ...base, budget: { ...base.budget, subscription_calls: 4 } });
   await page.goto('/#problem');

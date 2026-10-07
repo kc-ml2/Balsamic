@@ -37,14 +37,20 @@ def api_key(base):
 
 def provider_status():
     """Public, credential-free snapshot; no login or inference is performed."""
-    selected = os.environ.get("GRATING_LLM_PROVIDER", "codex").strip()
+    # No provider is selected by default; research roles stay idle until one is chosen.
+    selected = os.environ.get("GRATING_LLM_PROVIDER", "").strip() or "none"
     enabled = os.environ.get("GRATING_LLM_ENABLED", "").lower() in {"1", "true", "yes"}
     enabled = enabled and os.environ.get("GRATING_LLM_DISABLED", "").lower() not in {"1", "true", "yes"}
-    model = os.environ.get("GRATING_LLM_MODEL", "gpt-6-sol").strip()
+    model = os.environ.get("GRATING_LLM_MODEL", "" if selected == "none" else "gpt-6-sol").strip()
     common = {"provider": selected, "enabled": enabled, "model": model or None,
               "configured": False, "base_url": None, "local": False,
               "reasoning_effort": os.environ.get("GRATING_LLM_REASONING_EFFORT", "low"),
               "status_reason": "Awaiting configuration; model calls are disabled."}
+    if selected == "none":
+        common.update(transport=None, billing_mode="none", pricing_known=False, input_usd_per_million=None,
+                      output_usd_per_million=None, pricing_basis="No model provider selected",
+                      status_reason="No model provider selected. Set GRATING_LLM_PROVIDER to codex, openai_api or compatible to enable research roles.")
+        return common
     if selected == "codex":
         binary = os.environ.get("GRATING_CODEX_BINARY", "codex")
         available = shutil.which(binary) is not None

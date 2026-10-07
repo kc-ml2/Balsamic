@@ -145,6 +145,8 @@ class ProblemImports:
         tier = next((tier for tier in settings["tiers"] if tier["id"] == tier_id), None)
         if tier is None:
             raise ValueError("Choose a model tier for the importer")
+        if not tier["model"].get("provider") or not tier["model"].get("model"):
+            raise ValueError("Choose a model for the importer's tier in Models; no model provider is selected by default")
         return {key: tier["model"].get(key) for key in ("provider", "model", "effort")}, tier_id
 
     def create(self, values: ImportCreate):

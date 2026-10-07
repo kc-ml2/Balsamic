@@ -25,6 +25,7 @@ def codex(monkeypatch):
     for key in list(providers.os.environ):
         if key.startswith(("GRATING_LLM_", "GRATING_CODEX_")):
             monkeypatch.delenv(key)
+    monkeypatch.setenv("GRATING_LLM_PROVIDER", "codex")
     monkeypatch.setenv("GRATING_LLM_ENABLED", "true")
     monkeypatch.setattr(providers.shutil, "which", lambda name: "/fixture/codex")
     calls = []

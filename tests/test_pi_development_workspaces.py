@@ -61,6 +61,7 @@ class Driver:
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
     monkeypatch.setenv('GRATING_DEVELOPMENT_ENABLED', 'true')
+    monkeypatch.setenv('GRATING_PI_PROVIDER', 'openai-codex')
     workspace = Workspace(tmp_path)
     campaign = workspace.create_campaign(CampaignInput(name='Development campaign', compute_budget_seconds=100,
         validation_reserve_seconds=10, implementation_compute_budget_seconds=30,

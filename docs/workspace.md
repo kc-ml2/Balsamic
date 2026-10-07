@@ -31,7 +31,7 @@ to start or stop both services and their private Tailnet route with one command.
 Its explicit configuration enables Codex for both services; `--no-llm` disables
 model calls for an inspection session.
 
-The default provider is **Codex**, with **`gpt-6-sol` for every research role**. Model execution is **disabled by default** so you can configure it later. Starting a disabled workspace does not launch Codex or read `.key`. Numerical experiments, strategy records, and the notebook remain available. Research requests stay in the durable campaign inbox until model access is configured. One manager issue explains the blocker; enabling a provider lets the serialized queue continue with current guidance.
+**No model provider is selected by default**, and model execution is **disabled by default**, so you can configure both later. Once you choose a provider (`codex`, `openai_api` or `compatible`), every research role uses `gpt-6-sol` unless you set another model. Starting without a provider does not launch Codex or read `.key`. Numerical experiments, strategy records, and the notebook remain available. Research requests stay in the durable campaign inbox until model access is configured. One manager issue explains the blocker; enabling a provider lets the serialized queue continue with current guidance.
 
 The Python supervisor uses a small adapter to run Codex noninteractively for bounded, structured research calls. It does not require this conversation or an interactive Codex session to remain open. Configure the local Codex installation with subscription authentication when you are ready, then start or restart the workspace with:
 
@@ -46,8 +46,8 @@ Codex calls consume the authenticated account's subscription allowance. They hav
 
 | Variable | Purpose |
 |---|---|
-| `GRATING_LLM_PROVIDER` | Default `codex`. `openai_api` and `compatible` explicitly select API transports. |
-| `GRATING_LLM_MODEL` | Default `gpt-6-sol` for Codex; all research roles use this model. |
+| `GRATING_LLM_PROVIDER` | Default `none`. `codex` selects the subscription CLI; `openai_api` and `compatible` explicitly select API transports. |
+| `GRATING_LLM_MODEL` | Default `gpt-6-sol` once a provider is selected; all research roles use this model. |
 | `GRATING_LLM_ENABLED=true` | Opt in to model execution after configuring the selected provider. Default is disabled. |
 | `GRATING_LLM_DISABLED=true` | Disable model calls and retain queued research requests, overriding `GRATING_LLM_ENABLED`. |
 | `GRATING_CODEX_BINARY` | Codex executable name or path; defaults to `codex`. |

@@ -7,7 +7,10 @@ import path from 'node:path';
 // Dev mode (GRATING_PI_PROFILE names an agent directory): that profile's settings,
 // packages, extensions and skills load, so Pi configurations can be tried without
 // changing Balsamic. Pi's built-in file/shell tools stay off in both modes.
-export const LEGACY_PROVIDER = process.env.GRATING_PI_PROVIDER || 'openai-codex';
+// Sessions recorded before the provider was stored all used the OpenAI Codex subscription.
+export const LEGACY_PROVIDER = 'openai-codex';
+// Locked mode offers exactly one provider, and only when the server names it: no default provider.
+export const LOCKED_PROVIDER = process.env.GRATING_PI_PROVIDER || null;
 export const profile = process.env.GRATING_PI_PROFILE ? path.resolve(process.env.GRATING_PI_PROFILE) : null;
 const OVERRIDES = {compaction: {enabled: true, reserveTokens: 16384, keepRecentTokens: 20000},
   retry: {enabled: true, maxRetries: 3, baseDelayMs: 2000}};
@@ -83,7 +86,7 @@ export async function authStatus(authPath: string) {
   // checkAuth reads persisted credentials and the environment, also picking up
   // sign-in through the browser or a separate CLI process.
   const providers: Record<string, any> = {};
-  const ids = profile ? runtime.getProviders().map((p: any) => p.id) : [LEGACY_PROVIDER];
+  const ids = profile ? runtime.getProviders().map((p: any) => p.id) : LOCKED_PROVIDER ? [LOCKED_PROVIDER] : [];
   for (const id of ids) {
     const auth = await runtime.checkAuth(id).catch(() => undefined);
     if (auth) providers[id] = {auth: auth.type, billing: auth.type === 'oauth' ? 'subscription' : 'api'};
@@ -91,7 +94,7 @@ export async function authStatus(authPath: string) {
   const models = Object.keys(providers).flatMap(id => runtime.getModels(id).map((m: any) => ({
     provider: id, id: m.id, name: m.name, reasoning: Boolean(m.reasoning), thinking_levels: levels(m),
     context_window: m.contextWindow, cost: m.cost})));
-  let defaults: any = {provider: LEGACY_PROVIDER, model: null, effort: null};
+  let defaults: any = {provider: LOCKED_PROVIDER, model: null, effort: null};
   if (profile) {
     const settings = SettingsManager.create(profile, profile);
     defaults = {provider: settings.getDefaultProvider() || null, model: settings.getDefaultModel() || null,

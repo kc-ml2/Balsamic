@@ -19,7 +19,7 @@ def test_families_follow_vendors_through_routers():
     assert family_of("local", "mystery") == "local:mystery"
 
 
-def campaign(tmp_path, monkeypatch, *, profile=True, budget=5):
+def campaign(tmp_path, monkeypatch, *, profile=True, budget=5, locked_provider="openai-codex"):
     monkeypatch.setenv("GRATING_LLM_ENABLED", "true")
     monkeypatch.setenv("GRATING_LLM_DISABLED", "false")
     if profile:
@@ -29,6 +29,10 @@ def campaign(tmp_path, monkeypatch, *, profile=True, budget=5):
         monkeypatch.setenv("GRATING_PI_PROFILE", str(directory))
     else:
         monkeypatch.delenv("GRATING_PI_PROFILE", raising=False)
+        if locked_provider:
+            monkeypatch.setenv("GRATING_PI_PROVIDER", locked_provider)
+        else:
+            monkeypatch.delenv("GRATING_PI_PROVIDER", raising=False)
     workspace = Workspace(tmp_path / "workspace")
     record = workspace.create_campaign(CampaignInput(name="Models", compute_budget_seconds=100, validation_reserve_seconds=10, llm_budget_usd=budget,
         tasks=[TaskInput(name="Quadratic", problem_id="bounded_continuous", configuration={})]))
@@ -69,6 +73,11 @@ def test_known_models_and_thinking_levels_are_validated(tmp_path, monkeypatch):
         configure(workspace, record, "level", lead["id"], "deepseek", "deepseek-v4-pro", "xhigh")
     with pytest.raises(ValueError, match="not available"):
         configure(workspace, record, "missing", lead["id"], "deepseek", "deepseek-v9")
+
+
+def test_no_provider_is_chosen_without_a_profile_or_locked_provider(tmp_path, monkeypatch):
+    with pytest.raises(ValueError, match="no model provider is selected by default"):
+        campaign(tmp_path, monkeypatch, profile=False, locked_provider=None)
 
 
 def test_locked_mode_keeps_legacy_models_and_refuses_changes(tmp_path, monkeypatch):

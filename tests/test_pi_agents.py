@@ -29,6 +29,7 @@ def test_resumed_library_job_can_dispatch_review_before_grant_projection():
 def prepared(tmp_path, monkeypatch):
     monkeypatch.setenv('GRATING_LLM_ENABLED', 'true')
     monkeypatch.setenv('GRATING_LLM_DISABLED', 'false')
+    monkeypatch.setenv('GRATING_PI_PROVIDER', 'openai-codex')
     workspace = Workspace(tmp_path)
     campaign = workspace.create_campaign(CampaignInput(name='Pi campaign', compute_budget_seconds=100,
         validation_reserve_seconds=10, implementation_compute_budget_seconds=30,

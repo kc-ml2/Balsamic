@@ -29,7 +29,9 @@ STATUS_SECONDS = 60
 UNCONFIGURED_STATUS_SECONDS = 10
 # Record kinds whose changes require a scheduling pass (dispatch, controls, admission).
 SCHEDULING_KINDS = ("agent_run", "agent_session", "agent_campaign", "manager_command", "development_command")
-# Models of campaigns activated before per-campaign model choices (OpenAI Codex subscription).
+# The reviewed OpenAI Codex subscription models. They migrate campaigns activated before
+# per-campaign model choices, and are the defaults once a server names openai-codex as its
+# locked provider. No provider is chosen by default.
 LEGACY_MODELS = {"default": {"provider": "openai-codex", "model": "gpt-6-sol", "effort": "xhigh"},
     "roles": {role: {"provider": "openai-codex", "model": "gpt-6-astra", "effort": "xhigh"}
               for role in (LEAD, "proposal_reviewer", "implementation_validator")}}
@@ -38,6 +40,11 @@ LEGACY_MODELS = {"default": {"provider": "openai-codex", "model": "gpt-6-sol", "
 def dev_profile():
     """The Pi dev profile directory, or None in locked mode."""
     return os.environ.get("GRATING_PI_PROFILE") or None
+
+
+def locked_provider():
+    """The one Pi provider a locked-mode server offers (GRATING_PI_PROVIDER), or None."""
+    return os.environ.get("GRATING_PI_PROVIDER") or None
 
 
 def profile_defaults():
@@ -142,7 +149,13 @@ class PiController:
             "objective": values.objective, "migration_id": manifest["id"], "created_at": now(), "event_cursor": event_cursor,
             "provider": {"configured": False, "reason": "Checking Pi connection"}}
         default = values.model.model_dump() if values.model else profile_defaults() if dev_profile() else None
-        config["models"] = {"default": default, "roles": {}} if default else deepcopy(LEGACY_MODELS)
+        if default:
+            config["models"] = {"default": default, "roles": {}}
+        elif not dev_profile() and locked_provider() == "openai-codex":
+            config["models"] = deepcopy(LEGACY_MODELS)
+        else:
+            raise ValueError("Choose a model for this campaign's agents: give the Pi dev profile a default model, "
+                             "or name a locked provider (pi_provider); no model provider is selected by default")
         config["llm_family"] = family_of(config["models"]["default"]["provider"], config["models"]["default"]["model"])
         self.store.put("agent_campaign", config, "agent.activated")
         if values.delegated:

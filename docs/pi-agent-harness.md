@@ -1,10 +1,13 @@
 # Pi campaign runtime
 
 Campaigns activated with `agent.activate` use the installed Pi SDK (pinned at
-1.0.4 in `agent-harness/package.json`) and, without a dev profile, the
-`openai-codex` subscription provider. The optional development container image
-(`deploy/implementation-workspace`) installs the Pi CLI 0.87.1. The PI uses `gpt-6-astra`;
-specialists use `gpt-6-sol`; proposal and implementation reviewers use Astra.
+1.0.4 in `agent-harness/package.json`). No provider is selected by default: a dev
+profile supplies its default model, or a locked-mode server names its one provider
+with the launcher's `pi_provider` (`GRATING_PI_PROVIDER`). Activation without either,
+and without an explicit model, is refused. The optional development container image
+(`deploy/implementation-workspace`) installs the Pi CLI 0.87.1. With `openai-codex`
+as the locked provider, the PI uses `gpt-6-astra`; specialists use `gpt-6-sol`;
+proposal and implementation reviewers use Astra.
 All sessions currently use `xhigh` reasoning. Models are pinned for each session;
 historical chat/discovery model settings do not alter a Pi session. No paid API
 fallback is configured.

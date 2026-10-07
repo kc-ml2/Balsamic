@@ -50,8 +50,8 @@ def slug(label: str) -> str:
 
 
 def defaults(profile_model: dict | None) -> dict:
-    """Until the researcher saves tiers, every tier uses the profile's default model."""
-    model = profile_model or {"provider": "openai-codex", "model": "gpt-6-sol", "effort": None}
+    """Until the researcher saves tiers, every tier uses the profile's default model, if any."""
+    model = profile_model or {"provider": "", "model": "", "effort": None}
     tiers = [{"id": tier, "label": tier.capitalize(), "model": dict(model)} for tier in ("strong", "medium", "fast")]
     return {"id": RECORD_ID, "revision": 0, "tiers": tiers,
             "roles": {role: "strong" if role in STRONG_ROLES else "medium" for role in ASSIGNABLE}, "saved": False}

@@ -140,6 +140,25 @@ def test_paper_reference_is_optional_and_reaches_services(setup, monkeypatch):
             launcher.configuration(path)
 
 
+def test_no_model_provider_is_the_launcher_default(setup, monkeypatch):
+    config, path, _, _, _ = setup
+    monkeypatch.setenv("GRATING_LLM_MODEL", "stale-shell-model")
+    bare = {key: value for key, value in config.items() if key not in {"provider", "model"}}
+    path.write_text(json.dumps(bare))
+    environment = launcher.service_environment(launcher.configuration(path))
+    assert environment["GRATING_LLM_PROVIDER"] == "none" and "GRATING_LLM_MODEL" not in environment
+    path.write_text(json.dumps({**bare, "llm_enabled": True}))
+    with pytest.raises(launcher.LauncherError, match="needs a provider"):
+        launcher.configuration(path)
+    assert launcher.configuration(path, no_llm=True)["llm_enabled"] is False
+    pi_port = next(port for port in free_ports() if port not in config.values())
+    path.write_text(json.dumps({**bare, "pi_port": pi_port, "pi_provider": "openai-codex"}))
+    assert launcher.service_environment(launcher.configuration(path))["GRATING_PI_PROVIDER"] == "openai-codex"
+    path.write_text(json.dumps({**bare, "pi_provider": ""}))
+    with pytest.raises(launcher.LauncherError, match="pi_provider"):
+        launcher.configuration(path)
+
+
 def test_real_services_restart_keep_campaign_and_only_remove_their_route(setup):
     config, path, runtime, ts_path, run = setup
     original_routes = json.loads(ts_path.read_text())

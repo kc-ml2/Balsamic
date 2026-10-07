@@ -55,7 +55,7 @@ export type Campaign = {
   llm_used_usd?: number; usage?: Json; created_at?: string; [key: string]: any;
 };
 export type ProviderStatus = {
-  provider: string; model: string; billing_mode: 'subscription' | 'api';
+  provider: string; model: string | null; billing_mode: 'subscription' | 'api' | 'none';
   configured: boolean; enabled: boolean; status_reason?: string;
 };
 export type State = {
@@ -117,13 +117,14 @@ export const physicsDefaults = { n_cells: 64, wavelength_nm: 1100, deflection_an
 export function providerStatus(state: State): ProviderStatus {
   const provider = state.settings.provider || {};
   return {
-    provider: provider.provider || 'codex', model: provider.model || state.settings.model || 'gpt-6-sol',
-    billing_mode: provider.billing_mode || 'subscription', configured: provider.configured ?? state.settings.llm_configured,
+    provider: provider.provider || 'none', model: provider.model || state.settings.model || null,
+    billing_mode: provider.billing_mode || 'none', configured: provider.configured ?? state.settings.llm_configured,
     enabled: provider.enabled ?? state.settings.llm_configured, status_reason: provider.status_reason,
   };
 }
 
 export function providerLabel(provider: ProviderStatus): string {
-  const model = provider.model === 'gpt-6-sol' ? 'GPT6-sol' : provider.model;
+  if (provider.provider === 'none') return 'No model provider';
+  const model = provider.model === 'gpt-6-sol' ? 'GPT6-sol' : provider.model || 'no model';
   return `${provider.provider === 'codex' ? 'Codex' : provider.provider === 'openai_api' ? 'OpenAI API' : 'Model provider'} · ${model}`;
 }

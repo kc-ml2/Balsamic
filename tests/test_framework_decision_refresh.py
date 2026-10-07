@@ -15,6 +15,7 @@ from optimization_framework.storage.sqlite import now
 
 @pytest.fixture
 def prepared(tmp_path, monkeypatch):
+    monkeypatch.setenv("GRATING_LLM_PROVIDER", "codex")
     monkeypatch.setenv("GRATING_LLM_DISABLED", "true")
     from optimization_framework.research.providers import provider_status
     frozen_provider = {**provider_status(), "configured": True}

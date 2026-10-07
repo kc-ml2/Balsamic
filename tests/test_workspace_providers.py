@@ -30,6 +30,7 @@ def context():
 
 
 def enable_codex(monkeypatch, responder=None):
+    monkeypatch.setenv("GRATING_LLM_PROVIDER", "codex")
     monkeypatch.setenv("GRATING_LLM_ENABLED", "true")
     calls = []
 
@@ -47,14 +48,18 @@ def enable_codex(monkeypatch, responder=None):
     return calls
 
 
-def test_default_remains_unconfigured_codex_sol_even_when_api_key_exists(tmp_path, monkeypatch):
+def test_default_selects_no_provider_even_when_api_key_exists(tmp_path, monkeypatch):
     (tmp_path / ".key").write_text("test-secret-never-use")
     monkeypatch.setenv("GRATING_LLM_API_KEY", "another-test-secret")
     status = providers.provider_status()
-    assert status["provider"] == "codex"
-    assert status["model"] == "gpt-6-sol"
-    assert status["billing_mode"] == "subscription"
+    assert status["provider"] == "none" and status["model"] is None
+    assert status["billing_mode"] == "none"
     assert status["enabled"] is False and status["configured"] is False
+    monkeypatch.setenv("GRATING_LLM_ENABLED", "true")
+    assert providers.provider_status()["configured"] is False
+    monkeypatch.delenv("GRATING_LLM_ENABLED")
+    monkeypatch.setenv("GRATING_LLM_PROVIDER", "codex")
+    assert providers.provider_status()["model"] == "gpt-6-sol"
     assert status["input_usd_per_million"] is None
     assert "test-secret" not in json.dumps(status)
     output = research.run_research({"mode": "discuss"}, context())
@@ -253,8 +258,8 @@ def test_dashboard_reports_configure_later_and_coordinator_budgets_api_only(tmp_
     with TestClient(app) as client:
         settings = client.get("/api/state").json()["settings"]
         assert settings["llm_configured"] is False
-        assert settings["model"] == "gpt-6-sol"
-        assert settings["provider"]["billing_mode"] == "subscription"
+        assert settings["model"] is None and settings["provider"]["provider"] == "none"
+        assert settings["provider"]["billing_mode"] == "none"
         response = client.post("/api/campaigns", json={"name": "Provider ledger", "llm_budget_usd": 1,
             "tasks": [{"name": "Development", "physics": {"n_cells": 6, "fourier_order": 1}}]})
         assert response.status_code == 201, response.text

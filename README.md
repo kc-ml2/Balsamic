@@ -20,7 +20,7 @@ uv run --no-sync optimization-lab --directory runs/workspace --workers 2 --port 
 
 Open **http://127.0.0.1:8765**. Create a campaign, define development configurations and budgets, then launch a small experiment or discuss a hypothesis with the research partner. Data remain in the workspace directory after closing the browser.
 
-**No model provider is required.** Model execution is disabled until you configure one: the dashboard and numerical experiments work immediately, and research requests remain in the campaign's durable inbox. When enabled, research roles default to Codex with `gpt-6-sol`, which uses your subscription allowance and is tracked separately from paid API spending. Existing `.key` credentials are ignored unless you explicitly enable an API provider, and there is no automatic paid fallback. See the [workspace guide](docs/workspace.md) when you are ready to configure a provider, and for workflows, custom algorithms, and recovery.
+**No model provider is selected by default.** The dashboard and numerical experiments work immediately, and research requests remain in the campaign's durable inbox until you choose a provider and enable model calls. Research roles accept `codex` (your ChatGPT subscription allowance, tracked separately from paid API spending), `openai_api` or `compatible`, and default to `gpt-6-sol` once a provider is chosen. Pi campaigns need a dev profile with a default model, or a launcher `pi_provider`. Existing `.key` credentials are ignored unless you explicitly enable an API provider, and there is no automatic paid fallback. See the [workspace guide](docs/workspace.md) when you are ready to configure a provider, and for workflows, custom algorithms, and recovery.
 
 ### Optional components
 
@@ -28,7 +28,7 @@ Each component below enables one feature; everything else runs without it.
 
 | Component | Enables | Setup |
 |---|---|---|
-| Codex CLI | Research roles with the default `codex` provider | `codex login --device-auth`; see [server control](docs/server-control.md) |
+| Codex CLI | Research roles with the `codex` provider | `codex login --device-auth`; see [server control](docs/server-control.md) |
 | Pi agent harness | Pi campaigns and `scripts/pi-dev` | `(cd agent-harness && npm ci && npm run build)`; sign in from the notebook, or put provider keys in `~/.config/balsamic/secrets.env` ([Pi runtime](docs/pi-agent-harness.md)) |
 | bubblewrap (`bwrap`) | Executing generated and custom optimizer packages | Distribution package; Ubuntu also needs `deploy/grating-bwrap.apparmor` ([Pi runtime](docs/pi-agent-harness.md#host-prerequisite-found-during-rollout)) |
 | Docker | Full development workspaces with a browser IDE | `docker build -t grating-implementation-workspace:pi-0.87.1 deploy/implementation-workspace`, then set `development_enabled` |

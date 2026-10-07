@@ -53,7 +53,9 @@ queued or delegated work may use the enabled provider when services resume.
 Subscription mode has no automatic paid API fallback.
 
 Edit `model`, `provider`, or `llm_enabled` in `deploy/review-servers.json`, then run
-`restart`. For an inspection session with all model calls disabled:
+`restart`. `provider` may be omitted or `null` (no provider, the default) while
+`llm_enabled` is `false`. Without a `pi_profile`, set `pi_provider` (for example
+`"openai-codex"`) to name the single provider Pi campaigns may use; none is assumed. For an inspection session with all model calls disabled:
 
 ```bash
 ./scripts/labctl start --replace-fixture --no-llm

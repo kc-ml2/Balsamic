@@ -63,6 +63,9 @@ def configuration(path, no_llm=False):
         if not (Path(config["pi_profile"]) / "settings.json").is_file():
             raise LauncherError(f"Pi profile has no settings.json: {config['pi_profile']}")
         config["secrets_file"] = str(Path(config.get("secrets_file") or "~/.config/balsamic/secrets.env").expanduser())
+    # Locked mode (no pi_profile) offers only this Pi provider; there is no default.
+    if config.get("pi_provider") is not None and (not isinstance(config["pi_provider"], str) or not config["pi_provider"].strip()):
+        raise LauncherError("pi_provider must be a nonempty Pi provider id or null.")
     # Optional paper PDF copied into development workspaces as /references/paper.pdf.
     if config.get("paper_reference") is not None:
         if not isinstance(config["paper_reference"], str) or not config["paper_reference"].strip():
@@ -77,7 +80,12 @@ def configuration(path, no_llm=False):
         raise LauncherError("Choose distinct ports between 1024 and 65535; tailnet_port may be null.")
     if type(config.get("llm_enabled")) is not bool or type(config.get("workers")) is not int or config["workers"] < 1:
         raise LauncherError("llm_enabled must be a boolean and workers a positive integer.")
-    if config.get("provider") not in {"codex", "openai_api", "compatible"} or not config.get("model"):
+    # No model provider is the default: research roles stay idle until one is chosen.
+    if config.setdefault("provider", None) is None:
+        if config["llm_enabled"] and not no_llm:
+            raise LauncherError("llm_enabled needs a provider (codex, openai_api or compatible) and a model.")
+        config["model"] = None
+    elif config["provider"] not in {"codex", "openai_api", "compatible"} or not config.get("model"):
         raise LauncherError("Choose a supported provider and a nonempty model.")
     if "codex_timeout_seconds" in config and (type(config["codex_timeout_seconds"]) not in {int, float}
             or not 5 <= config["codex_timeout_seconds"] <= 600):
@@ -194,7 +202,10 @@ def healthy(config, role):
 
 def service_environment(config):
     env = dict(os.environ)
-    env.update(GRATING_LLM_PROVIDER=config["provider"], GRATING_LLM_MODEL=config["model"],
+    env.pop("GRATING_LLM_MODEL", None)
+    if config["model"]:
+        env["GRATING_LLM_MODEL"] = config["model"]
+    env.update(GRATING_LLM_PROVIDER=config["provider"] or "none",
                GRATING_LLM_ENABLED=str(config["llm_enabled"]).lower(),
                GRATING_LLM_DISABLED=str(not config["llm_enabled"]).lower(),
                GRATING_IMPLEMENTATIONS_URL=f"http://127.0.0.1:{config['implementation_port']}",
@@ -217,6 +228,8 @@ def service_environment(config):
         if config.get("pi_profile"):
             # Every service learns dev mode and its profile defaults; keys go only to the harness.
             env["GRATING_PI_PROFILE"] = config["pi_profile"]
+        if config.get("pi_provider"):
+            env["GRATING_PI_PROVIDER"] = config["pi_provider"]
     return env
 
 
