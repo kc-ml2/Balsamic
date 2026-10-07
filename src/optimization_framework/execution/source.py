@@ -9,7 +9,8 @@ import sys
 
 def package_names():
     return sorted({"optimization_framework", *(p.value.split(":")[0].split(".")[0]
-        for group in ("optimization_framework.problems", "optimization_framework.inference", "optimization_framework.recipes") for p in entry_points(group=group))})
+        for group in ("optimization_framework.problems", "optimization_framework.inference", "optimization_framework.recipes",
+                      "optimization_framework.optimizers") for p in entry_points(group=group))})
 
 
 def source_root():

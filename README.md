@@ -32,7 +32,7 @@ Each component below enables one feature; everything else runs without it.
 | Pi agent harness | Pi campaigns and `scripts/pi-dev` | `(cd agent-harness && npm ci && npm run build)`; sign in from the notebook, or put provider keys in `~/.config/balsamic/secrets.env` ([Pi runtime](docs/pi-agent-harness.md)) |
 | bubblewrap (`bwrap`) | Executing generated and custom optimizer packages | Distribution package; Ubuntu also needs `deploy/grating-bwrap.apparmor` ([Pi runtime](docs/pi-agent-harness.md#host-prerequisite-found-during-rollout)) |
 | Docker | Full development workspaces with a browser IDE | `docker build -t grating-implementation-workspace:pi-0.87.1 deploy/implementation-workspace`, then set `development_enabled` |
-| `mask-optimizers` 0.1.0 | The `motif_surgery`, `nested_fourier` and `phenotype_de` methods | Install its wheel into `.venv` ([FLRL implementations](docs/flrl-implementations.md#standalone-mask-library-in-this-campaign)); `uv sync` removes it, so reinstall after syncing |
+| `mask-optimizers` 0.1.0 | The `motif_surgery`, `nested_fourier` and `phenotype_de` methods | The `masks` extra, included by `--all-extras`, from [kc-ml2/mask-optimizers](https://github.com/kc-ml2/mask-optimizers); see [optimizer plug-ins](docs/optimizer-plugins.md) |
 | Paper and FLRL references | `/references` inside development workspaces | Set `paper_reference` in the launcher JSON or `GRATING_PAPER_REFERENCE`; clone `jLabKAIST/flrl` beside this repository or set `GRATING_FLRL_REFERENCE` |
 | Tailscale and `socat` | Remote access to the dashboard | [Server control](docs/server-control.md) |
 | Chrome or Playwright Chromium | Browser tests | `npx playwright install chromium` |
@@ -56,7 +56,7 @@ uv run --no-sync dqn-meent design --run runs/smoke --output runs/smoke/design.pn
 uv run --no-sync pytest -q
 ```
 
-The full test suite takes about 15 minutes on CPU. Without `mask-optimizers`, the tests in `tests/test_mask_library_campaign.py` and one native-confirmation test in `tests/test_framework_racing.py` fail with "Install mask-optimizers 0.1.0".
+The full test suite takes about 15 minutes on CPU. If you install without the `masks` extra, the tests in `tests/test_mask_library_campaign.py` and one native-confirmation test in `tests/test_framework_racing.py` fail with "Install mask-optimizers 0.1.0".
 
 The lock file pins the environment. PyTorch's default Linux distribution can download several GB of CUDA dependencies even when using CPU. A GPU is **not required**. This setup uses NumPy/complex128 for MEENT and CPU PyTorch by default; `training.device="cuda"` moves only the Q-network, not the optical solver. Small Q-networks and 1D RCWA are often suitable for CPU. The CLI limits BLAS to one thread; training likewise defaults to one PyTorch thread.
 
@@ -150,6 +150,7 @@ Do not modify the step count to extend a completed checkpoint: that changes the 
 - `src/dqn_meent/workspace/`: API, persistent records, worker service, adaptive research, literature metadata, statistical comparisons, and isolated custom optimizers.
 - `frontend/`: React/TypeScript dashboard and browser interaction tests.
 - `docs/workspace.md`: installation, research workflows, provider setup, and custom optimizer protocol.
+- `docs/optimizer-plugins.md`: how optimizer libraries are packaged, pinned and registered as plug-ins.
 - `src/dqn_meent/config.py`: validated experiment configuration.
 - `physics.py`: MEENT adapter, material resolution, physical checks and bounded LRU cache.
 - `environment.py`: binary design MDP and Gymnasium interface.

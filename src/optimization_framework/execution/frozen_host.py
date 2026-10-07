@@ -17,6 +17,9 @@ def install_entries(manifest):
         inference.adapters = inference.InferenceRegistry(manifest["inference_entry_points"])
     from optimization_framework.evaluation import registered_recipes
     registered_recipes.recipes = registered_recipes.RecipeRegistry(manifest.get("recipe_entry_points", {}))
+    if "optimizer_entry_points" in manifest:
+        from optimization_framework.optimizers import plugins
+        plugins.installed = plugins.OptimizerPlugins(manifest["optimizer_entry_points"])
 
 
 def problem_registry(directory, problem):

@@ -257,14 +257,14 @@ class DiscoveryTools:
             return {"record": view_record(record, envelope_bytes=32, **view)}
         catalog = self.workspace.implementations.catalog(refresh=True)
         from optimization_framework.implementations.references import catalog as reference_catalog
-        from optimization_framework.optimizers.registry import METHODS
+        from optimization_framework.optimizers.registry import methods
         versions = catalog["versions"]
         if arguments["version_id"]:
             versions = [version for version in versions if version["id"] == arguments["version_id"]]
             if not versions:
                 raise ValueError("Implementation version is not available")
         return {"versions": [{key: row[key] for key in ("id", "name", "status", "spec", "validation_report") if key in row}
-                             for row in versions], "bundled_methods": METHODS, "connection_error": catalog["connection_error"],
+                             for row in versions], "bundled_methods": methods(), "connection_error": catalog["connection_error"],
                 "reference_sources": reference_catalog(self.store, campaign_id),
                 "reference_source_guidance": "Captured upstream code is not a validated campaign executable. "
                     "Use evidence.read with its reference ID and /files pointers to inspect and reuse the existing source."}

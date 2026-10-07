@@ -21,11 +21,10 @@ from optimization_framework.contracts.problems import ProblemInstance
 from optimization_framework.contracts.experiments import StudySpec, ExperimentSpec, ImplementationVersion, BudgetAmendment, CompletionCondition, study_for_tasks, task_in_study
 from optimization_framework.contracts.experiments import DELIBERATE_STOPS
 from optimization_framework.contracts.base import content_hash
-from optimization_framework.optimizers.registry import METHODS, capability_reason
+from optimization_framework.optimizers.registry import capability_reason, methods as algorithms
 from optimization_framework.execution.source import snapshot
 
 
-ALGORITHMS = METHODS
 ACTIVE = {"queued", "running", "pausing", "stopping"}
 LIVE = {"running", "pausing", "stopping"}
 
@@ -553,7 +552,7 @@ class Workspace:
                 raise ValueError("Problem instance is outside the active frozen study")
             if study and study["scope"] == "confirmation" and validation is None and not request.confirmation_protocol_id and not execution.get("protocol_cell_id"):
                 raise ValueError("Experiments in this study must use its frozen confirmation protocol")
-            if not prototype and reproduction is None and request.algorithm not in {a["id"] for a in ALGORITHMS} | {"validate", "recipe", "custom", "package"}:
+            if not prototype and reproduction is None and request.algorithm not in {a["id"] for a in algorithms()} | {"validate", "recipe", "custom", "package"}:
                 raise ValueError("Unknown executable algorithm; proposed code must be verified before execution")
             if request.algorithm == "package" and bundle is None:
                 raise ValueError("Select a validated implementation version")
@@ -729,7 +728,7 @@ class Workspace:
                 record["method_contract"] = 2
             if request.confirmation_protocol_id:
                 record.update(self.confirmations.prepare(request.confirmation_protocol_id, record))
-            if record["algorithm"] in {item["id"] for item in ALGORITHMS} | {"validate", "recipe"} or (reproduction and not bundle):
+            if record["algorithm"] in {item["id"] for item in algorithms()} | {"validate", "recipe"} or (reproduction and not bundle):
                 record["builtin_implementation_id"] = f"builtin:{record['algorithm']}:{record['source_hash']}"
             entries = []
             if record.get("execution_contract") == 1:

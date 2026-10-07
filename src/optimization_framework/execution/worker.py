@@ -113,6 +113,9 @@ class ExperimentWorker:
         self.registry = problems
         from optimization_framework.evaluation.inference import InferenceRegistry
         self.inference_registry = InferenceRegistry((self.spec.get("execution_manifest") or {}).get("inference_entry_points"))
+        from optimization_framework.optimizers.plugins import OptimizerPlugins
+        captured = (self.spec.get("execution_manifest") or {}).get("optimizer_entry_points")
+        self.optimizer_plugins = OptimizerPlugins(captured) if captured is not None else None
         if self.spec.get("execution_manifest"):
             from optimization_framework.execution.provenance import verify
             from optimization_framework.evaluation.registry import ProblemRegistry
@@ -262,7 +265,8 @@ class ExperimentWorker:
             return result
         return create(self.spec["algorithm"], self.problem, self.spec.get("algorithm_config", {}), self.spec["seed"],
                       self.spec["schedule_steps"], self.spec.get("training"), self.spec.get("declared_assets"),
-                      artifact_store=LocalArtifactStore(self.directory / "inputs"), inference_registry=self.inference_registry)
+                      artifact_store=LocalArtifactStore(self.directory / "inputs"), inference_registry=self.inference_registry,
+                      optimizer_plugins=self.optimizer_plugins)
 
     def elapsed(self):
         return self.elapsed_before + time.monotonic() - self.started

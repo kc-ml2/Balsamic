@@ -4,7 +4,7 @@ from optimization_framework.contracts.problems import ProblemInstance
 from optimization_framework.contracts.requests import TrialInput
 from optimization_framework.evaluation.diagnostics import prepare as prepare_diagnostics
 from optimization_framework.optimizers.config import normalize_training
-from optimization_framework.optimizers.registry import METHODS, bind_inputs, capabilities, capability_reason, validate_parameters
+from optimization_framework.optimizers.registry import bind_inputs, capabilities, capability_reason, methods, validate_parameters
 
 
 def prepare(request, problem, assets, implementation=None, *, evaluator_manifest=None):
@@ -14,7 +14,7 @@ def prepare(request, problem, assets, implementation=None, *, evaluator_manifest
     if evaluator_manifest is not None:
         from optimization_framework.evaluation.generated import declared_registry
         registry = declared_registry(problem, evaluator_manifest)
-    native = {item["id"] for item in METHODS}
+    native = {item["id"] for item in methods()}
     if request.algorithm not in native | {"recipe", "validate", "package"}:
         raise ValueError("Unknown executable algorithm; proposed code must be verified before execution")
     parameters = request.algorithm_config

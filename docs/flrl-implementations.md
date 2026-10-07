@@ -86,14 +86,11 @@ contract. No simulator code is copied into the numerical library. The adapter
 requires version `0.1.0`; if that version is absent, method readiness reports
 the missing installation rather than treating a proposal as runnable.
 
-On this host the wheel is at
-`../mask-optimizers/dist/mask_optimizers-0.1.0-py3-none-any.whl` with SHA-256
-`7ed1812b8dbecf005ccf395cd675f7e5bf05cb0b517c1b03613ccd9edb04691c`.
-Install it into the application environment with:
-
-```bash
-uv pip install --python .venv/bin/python ../mask-optimizers/dist/mask_optimizers-0.1.0-py3-none-any.whl
-```
+The library is published at [kc-ml2/mask-optimizers](https://github.com/kc-ml2/mask-optimizers),
+tag `v0.1.0` (the same source commit). It is the optional `masks` extra, so
+`uv sync --frozen --all-extras` installs the locked commit. The adapter registers
+these methods as an optimizer plug-in; see [optimizer plug-ins](optimizer-plugins.md)
+for the design and for releasing a new library version.
 
 `tests/test_mask_library_campaign.py` checks the boundary's mask order,
 y-reflection, exact checkpoint continuation, 256×128 construction, one

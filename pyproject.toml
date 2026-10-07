@@ -25,6 +25,7 @@ dependencies = [
 dev = ["pytest>=9,<10", "jsonschema>=4.19,<5"]
 meent = ["meent==0.13.2", "scipy==1.18.1", "matplotlib>=3.10,<4", "tqdm>=4.70,<5"]
 learners = ["torch==2.14.0", "gymnasium==1.3.0"]
+masks = ["mask-optimizers==0.1.0"]
 
 [project.scripts]
 dqn-meent = "dqn_meent.cli:main"
@@ -39,6 +40,12 @@ optimization-report = "optimization_framework.reports.cli:main"
 meent_grating = "dqn_meent.problem:MeentProblem"
 meent_2d_dual_polarization_deflector = "dqn_meent.problem_2d:Meent2DProblem"
 bounded_continuous = "optimization_benchmarks.problems:ContinuousProblem"
+
+[project.entry-points."optimization_framework.optimizers"]
+mask_optimizers = "dqn_meent.mask_library_adapter:MaskLibraryPlugin"
+
+[tool.uv.sources]
+mask-optimizers = { git = "https://github.com/kc-ml2/mask-optimizers", tag = "v0.1.0" }
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/dqn_meent", "src/optimization_framework", "src/optimization_benchmarks"]

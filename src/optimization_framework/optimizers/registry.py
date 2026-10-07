@@ -1,15 +1,16 @@
-"""Reviewed bundled implementations; generated code cannot select this lane."""
+"""Reviewed bundled implementations and installed optimizer plug-ins; generated code cannot select this lane."""
+import weakref
+
 from optimization_framework.contracts.problems import CandidateSchema, ProblemInstance
 from optimization_framework.contracts.capabilities import OptimizerCapabilities
 from .lifecycle import AskTellAdapter, BoundedSearch
 from .config import TrainConfig
 from pydantic import TypeAdapter
 from .fourier_specs import METHODS as FOURIER_METHODS, PROPERTIES as FOURIER_PROPERTIES
+from . import plugins
 
-MASK_LIBRARY_METHODS = {"motif_surgery", "nested_fourier", "phenotype_de"}
 
-
-METHODS = [
+BUILTINS = [
     {"id": "random", "name": "Uniform random", "description": "Independent feasible samples; reference baseline.", "representations": ["binary", "discrete", "continuous"], "constraints": True, "parameters": {}},
     {"id": "coordinate", "name": "Coordinate search", "description": "Bounded coordinate improvement with global restarts.", "representations": ["continuous"], "constraints": True, "parameters": {"radius": .2}},
     {"id": "evaluate_asset", "name": "Evaluate a reference solution", "description": "One evaluation of an explicitly declared solution asset; no search move.",
@@ -26,12 +27,6 @@ METHODS = [
         ("population", "Population search", "Recombination and mutation of a binary population."),
         ("surrogate", "Surrogate-guided search", "Fit observations to select prospective candidates."))],
     *FOURIER_METHODS,
-    *[{"id": name, "name": title, "description": "Standalone mask-optimizers method on the 2D MEENT grid.",
-       "problem_ids": ["meent_2d_dual_polarization_deflector"], "representations": ["binary"],
-       "constraints": False, "parameters": {}} for name, title in (
-        ("motif_surgery", "Mirror-paired motif surgery"),
-        ("nested_fourier", "Nested Fourier-band continuation"),
-        ("phenotype_de", "Phenotype-archive differential evolution"))],
 ]
 
 
@@ -50,28 +45,60 @@ PROPERTIES = {
     "block_tabu": {"max_block_size": INTEGER, "restart_patience": INTEGER, "tabu_tenure": INTEGER},
     "population": {"population_size": {"type": "integer", "minimum": 2}, "mutation_rate": {**POSITIVE, "maximum": 1}},
     "surrogate": {"warmup": INTEGER, "candidate_pool": INTEGER, "ridge": POSITIVE, "exploration": POSITIVE, "max_samples": INTEGER},
-    "motif_surgery": {"radius": INTEGER, "initial_count": INTEGER},
-    "nested_fourier": {"stage_patience": INTEGER},
-    "phenotype_de": {"population_size": {"type": "integer", "minimum": 4}, "bins": {"type": "integer", "minimum": 2},
-        "differential_weight": {**POSITIVE, "maximum": 2},
-        "crossover_rate": {**POSITIVE, "maximum": 1},
-        "modes_x": INTEGER, "modes_y": {"type": "integer", "minimum": 0}},
 }
-for method in METHODS:
-    name = method["id"]
-    properties = dict(TypeAdapter(TrainConfig).json_schema()["properties"]) if name == "dqn" else dict(PROPERTIES[name])
+
+
+def _declare(method, properties, completion_units):
+    """Complete a descriptor with the framework-owned optimizer_v1 execution contract."""
     for key in ("seed", "total_steps"):
         properties.pop(key, None)  # The worker owns these frozen experiment fields.
-    if name not in FOURIER_PROPERTIES and name not in MASK_LIBRARY_METHODS | {"coordinate", "frozen_policy", "evaluate_asset", "artifact_inference"}:
-        properties["initial_design"] = {"type": "array", "description": "A candidate in this instance's declared schema"}
     method.update(contract="optimizer_v1", contract_version=1, batch_size=1, supports_failure_observations=False,
         parameter_schema={"type": "object", "properties": properties, "additionalProperties": False})
-    method["execution_capabilities"] = OptimizerCapabilities(completion_units=["evaluation_requests", "optimizer_decisions"]
-        if name in {"dqn", "frozen_policy", "coordinate", "flrl_autograd_adam"} else ["evaluation_requests"]).model_dump(mode="json")
+    method["execution_capabilities"] = OptimizerCapabilities(completion_units=list(completion_units)).model_dump(mode="json")
+    return method
+
+
+for method in BUILTINS:
+    name = method["id"]
+    properties = dict(TypeAdapter(TrainConfig).json_schema()["properties"]) if name == "dqn" else dict(PROPERTIES[name])
+    if name not in FOURIER_PROPERTIES and name not in {"coordinate", "frozen_policy", "evaluate_asset", "artifact_inference"}:
+        properties["initial_design"] = {"type": "array", "description": "A candidate in this instance's declared schema"}
+    _declare(method, properties, ["evaluation_requests", "optimizer_decisions"]
+        if name in {"dqn", "frozen_policy", "coordinate", "flrl_autograd_adam"} else ["evaluation_requests"])
     if name == "dqn":
         from .policy import POLICY_FORMAT
         method["execution_capabilities"] = OptimizerCapabilities(completion_units=["evaluation_requests", "optimizer_decisions"],
             exports=[POLICY_FORMAT]).model_dump(mode="json")
+
+
+BUILTIN_IDS = frozenset(item["id"] for item in BUILTINS)
+_PLUGGED = weakref.WeakKeyDictionary()  # plug-in registry -> its completed descriptors
+
+
+def _plugin_method(method):
+    method = dict(method)
+    properties = dict(method.pop("parameter_properties"))
+    return _declare(method, properties, method.pop("completion_units", ["evaluation_requests"]))
+
+
+def _describe(name, optimizer_plugins=None):
+    """(plug-in or None, completed descriptor or None); plug-ins come from the given or installed registry."""
+    if name in BUILTIN_IDS:
+        return None, next(item for item in BUILTINS if item["id"] == name)
+    found = (optimizer_plugins or plugins.installed).get(name)
+    return (found[0], _plugin_method(found[1])) if found else (None, None)
+
+
+def methods(optimizer_plugins=None):
+    """Bundled methods, then plug-in methods. Plug-ins load on first use, never at import,
+    so services start without importing numerical packages."""
+    source = optimizer_plugins or plugins.installed
+    if source not in _PLUGGED:
+        plugged = [_plugin_method(method) for method in source.methods()]
+        if clash := BUILTIN_IDS & {method["id"] for method in plugged}:
+            raise ValueError("Optimizer plug-ins redefine bundled methods: " + ", ".join(sorted(clash)))
+        _PLUGGED[source] = plugged
+    return [*BUILTINS, *_PLUGGED[source]]
 
 
 def capabilities(name, parameters=None, implementation=None):
@@ -80,14 +107,16 @@ def capabilities(name, parameters=None, implementation=None):
     if name == "artifact_inference":
         from optimization_framework.evaluation.inference import adapters
         return adapters.get((parameters or {}).get("adapter_id"))[1].capabilities
-    method = next((item for item in METHODS if item["id"] == name), None)
+    _, method = _describe(name)
     return OptimizerCapabilities(**(method["execution_capabilities"] if method else {}))
 
 
-def validate_parameters(name, instance, parameters, training=None, inference_registry=None):
+def validate_parameters(name, instance, parameters, training=None, inference_registry=None, optimizer_plugins=None):
     """Reject unsupported or malformed procedures before allocation and launch."""
     from optimization_framework.implementations.models import check_parameters
-    method = next(item for item in METHODS if item["id"] == name)
+    plugin, method = _describe(name, optimizer_plugins)
+    if method is None:
+        raise ValueError(f"Unknown optimizer {name!r}")
     if set(parameters) - set(method["parameter_schema"]["properties"]):
         raise ValueError("Unsupported optimizer parameters: " + ", ".join(sorted(set(parameters) - set(method["parameter_schema"]["properties"]))))
     if "initial_design" in parameters:
@@ -101,8 +130,8 @@ def validate_parameters(name, instance, parameters, training=None, inference_reg
     if name in FOURIER_PROPERTIES:
         from .fourier_specs import validate
         validate(name, instance, parameters)
-    if name in MASK_LIBRARY_METHODS and (parameters.get("modes_x", 8) > 16 or parameters.get("modes_y", 4) > 8):
-        raise ValueError("Mask-library Fourier modes exceed the supported basis")
+    if plugin:
+        plugin.validate(name, instance, parameters)
     if name == "artifact_inference":
         from optimization_framework.evaluation.inference import prepare
         prepare(parameters.get("adapter_id"), instance, parameters.get("parameters", {}), registry=inference_registry)
@@ -112,16 +141,14 @@ def validate_parameters(name, instance, parameters, training=None, inference_reg
         raise ValueError("GPU scheduling is not supported by this workspace; use the CPU implementation")
 
 
-def capability_reason(name, instance):
+def capability_reason(name, instance, optimizer_plugins=None):
     if isinstance(instance, dict):
         instance = ProblemInstance(**instance)
-    method = next((m for m in METHODS if m["id"] == name), None)
+    plugin, method = _describe(name, optimizer_plugins)
     if method is None:
         return "Missing implementation; commission or reuse a validated version"
-    if name in MASK_LIBRARY_METHODS:
-        from dqn_meent.mask_library_adapter import library_available, LIBRARY_VERSION
-        if not library_available():
-            return f"Install mask-optimizers {LIBRARY_VERSION} before using this campaign method"
+    if plugin and (reason := plugin.unavailable_reason()):
+        return reason
     if method.get("problem_ids") and instance.definition_id not in method["problem_ids"]:
         return f"{method['name']} requires its declared 2D MEENT problem"
     if instance.candidate_schema.representation not in method["representations"]:
@@ -161,17 +188,18 @@ def bind_inputs(name, instance, parameters, assets):
     return parameters
 
 
-def create(name, instance, parameters, seed, schedule_steps, training=None, assets=None, artifact_store=None, inference_registry=None):
-    reason = capability_reason(name, instance)
+def create(name, instance, parameters, seed, schedule_steps, training=None, assets=None, artifact_store=None, inference_registry=None,
+           optimizer_plugins=None):
+    reason = capability_reason(name, instance, optimizer_plugins)
     if reason:
         raise ValueError(reason)
-    validate_parameters(name, instance, parameters, training, inference_registry)
+    validate_parameters(name, instance, parameters, training, inference_registry, optimizer_plugins)
     if name in FOURIER_PROPERTIES:
         from dqn_meent.flrl_optimizers import FourierOptimizer
         return FourierOptimizer(name, instance, parameters, seed)
-    if name in MASK_LIBRARY_METHODS:
-        from dqn_meent.mask_library_adapter import MaskLibraryAdapter
-        return MaskLibraryAdapter(name, instance, parameters, seed)
+    plugin, _ = _describe(name, optimizer_plugins)
+    if plugin:
+        return plugin.create(name, instance, parameters, seed)
     if name == "artifact_inference":
         from optimization_framework.evaluation.inference import create as create_inference
         return create_inference(instance, parameters, seed, assets or [], artifact_store, inference_registry)

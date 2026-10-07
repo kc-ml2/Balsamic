@@ -86,7 +86,7 @@ class ImplementationBridge:
             and report.get("runtime_digest") == version["runtime_digest"] and report_matches(version, report))
 
     def readiness(self, hypothesis, task=None):
-        from optimization_framework.execution.service import ALGORITHMS
+        from optimization_framework.execution.service import algorithms
         version_id = hypothesis.get("implementation_version_id")
         job = next((j for j in reversed(self.store.list("implementation_grant", hypothesis.get("campaign_id")))
                     if j.get("hypothesis_id") == hypothesis.get("id") and j["status"] not in SETTLED), None)
@@ -108,7 +108,7 @@ class ImplementationBridge:
                 return {"state": "incompatible", "runnable": False, "reason": str(exc), "version_id": version_id}
             return {"state": "ready", "runnable": True, "reason": "Implementation validation passed. Experimental performance is assessed separately.",
                     "version_id": version_id, "validation_report_id": report["id"]}
-        if hypothesis.get("algorithm") in {a["id"] for a in ALGORITHMS}:
+        if hypothesis.get("algorithm") in {a["id"] for a in algorithms()}:
             from optimization_framework.optimizers.registry import capability_reason
             candidates = [task] if task else self.workspace.current_tasks(hypothesis["campaign_id"])
             reasons = [capability_reason(hypothesis["algorithm"], candidate["problem"]) for candidate in candidates if candidate.get("problem")]

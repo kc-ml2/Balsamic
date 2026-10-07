@@ -28,7 +28,7 @@ class ResearchCoordinator:
 
     def context(self, campaign_id, question="", *, target_id=None, command_operations=None, decision_refresh_id=None):
         from optimization_framework.evaluation.registry import problems
-        from optimization_framework.optimizers.registry import METHODS
+        from optimization_framework.optimizers.registry import methods
         from optimization_framework.implementations.reuse import assess
         if decision_refresh_id and command_operations is None:
             from optimization_framework.campaigns.decisions import refresh_operations
@@ -75,7 +75,7 @@ class ResearchCoordinator:
                 "active_study": self.store.get(campaign["active_study_id"], "study") if campaign.get("active_study_id") else None,
                 "problem_definitions": list({(t["problem"]["definition_id"], t["problem"]["evaluator_version"]):
                     self.workspace.evaluators.describe_task(t).model_dump(mode="json") for t in tasks if t.get("problem")}.values()),
-                "available_methods": METHODS,
+                "available_methods": methods(),
                 "hypotheses": hypotheses, "decisions": [item for kind, item in visible_records if kind == "decision"],
                 "evidence_library": [source for source in sources if source.get("id") in visible_ids],
                 "history": [item for kind, item in visible_records if kind == "message"][-20:],

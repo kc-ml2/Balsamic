@@ -25,7 +25,7 @@ from optimization_framework.api.compatibility import prior_request as prior_comp
 from optimization_framework.contracts.commands import Command
 from optimization_framework.contracts.requests import (Model, CampaignInput, CampaignUpdate, TrialInput, ControlInput, ValidationInput, RecipeInput, StudyInput,
                      HypothesisInput, ReviewInput, DecisionInput, ResearchInput)
-from optimization_framework.execution.service import Workspace, ALGORITHMS
+from optimization_framework.execution.service import Workspace, algorithms
 from optimization_framework.storage.sqlite import identifier, now
 from optimization_framework.research.providers import api_spend
 
@@ -429,7 +429,7 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
             provider = {**provider, **connection, "provider": "pi", "model": default.get("model"),
                 "billing_mode": billing, "label": f"Pi / {default.get('provider')}", "llm_family": config.get("llm_family"),
                 "enabled": provider.get("enabled", True)}
-        response = {"workspace_id": workspace_id, "campaigns": campaigns, "campaign": campaign, "algorithms": ALGORITHMS,
+        response = {"workspace_id": workspace_id, "campaigns": campaigns, "campaign": campaign, "algorithms": algorithms(),
                     "settings": {"llm_configured": provider["configured"], "model": provider["model"],
                                  "provider": provider, "max_workers": workspace.max_workers}}
         if current:

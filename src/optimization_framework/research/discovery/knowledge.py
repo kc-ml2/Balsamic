@@ -217,8 +217,8 @@ def validate(controller, session, task, artifact):
 def project_candidates(controller, session, task, artifact):
     if artifact["kind"] != "candidate_batch" or artifact["stale"]:
         return
-    from optimization_framework.optimizers.registry import METHODS
-    known = {row["id"] for row in METHODS}
+    from optimization_framework.optimizers.registry import methods
+    known = {row["id"] for row in methods()}
     store = controller.store
     batch = CandidateBatch.model_validate(artifact["content"])
     for candidate in batch.candidates:

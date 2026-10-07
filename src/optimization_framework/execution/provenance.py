@@ -147,15 +147,18 @@ def capture(directory, *, problem_ids, purpose="worker", recipe_ids=()):
     code = directory / "code"
     files = _files(code)
     entries = _entries(problem_ids)
-    inference_entries = {}
+    inference_entries, optimizer_entries = {}, {}
     if purpose == "worker":
         from optimization_framework.evaluation.inference import adapters
+        from optimization_framework.optimizers import plugins
         inference_entries = adapters.entries()
+        optimizer_entries = plugins.installed.entries()
     from optimization_framework.evaluation.registered_recipes import recipes
     available_recipes = recipes.entries()
     recipe_entries = {identity: available_recipes[identity] for identity in sorted(set(recipe_ids)) if identity in available_recipes}
     adapter_roots = [value.split(":")[0] for value in entries.values()]
-    roots = ROOTS[purpose] + adapter_roots + [value.split(":")[0] for value in [*inference_entries.values(), *recipe_entries.values()]]
+    roots = ROOTS[purpose] + adapter_roots + [value.split(":")[0] for value in
+        [*inference_entries.values(), *recipe_entries.values(), *optimizer_entries.values()]]
     if purpose == "worker":
         roots.append("optimization_framework.execution.preparation")
     relevant, imports = _closure(code, files, roots)
@@ -171,9 +174,11 @@ def capture(directory, *, problem_ids, purpose="worker", recipe_ids=()):
     manifest = {"schema_version": 1, "purpose": purpose, "operations": OPERATIONS[purpose], "files": files, "entry_points": entries,
                 "inference_entry_points": inference_entries,
                 "recipe_entry_points": recipe_entries,
+                **({"optimizer_entry_points": optimizer_entries} if optimizer_entries else {}),
                 "roots": roots, "scientific_files": relevant, "imports": sorted(imports),
                 "scientific_digest": content_hash({"files": relevant, "entry_points": entries,
-                    "inference_entry_points": inference_entries, "recipe_entry_points": recipe_entries}),
+                    "inference_entry_points": inference_entries, "recipe_entry_points": recipe_entries,
+                    **({"optimizer_entry_points": optimizer_entries} if optimizer_entries else {})}),
                 "runtime": runtime_manifest(imports, locks)}
     atomic_json(directory / "execution-manifest.json", manifest)
     return manifest
@@ -189,6 +194,8 @@ def _verify(directory, manifest, *, runtime=True):
         scientific["inference_entry_points"] = manifest["inference_entry_points"]
     if "recipe_entry_points" in manifest:
         scientific["recipe_entry_points"] = manifest["recipe_entry_points"]
+    if "optimizer_entry_points" in manifest:
+        scientific["optimizer_entry_points"] = manifest["optimizer_entry_points"]
     if manifest["scientific_digest"] != content_hash(scientific):
         raise ValueError("The frozen scientific source manifest is inconsistent")
     if any(manifest["files"].get(name) != identity for name, identity in manifest["scientific_files"].items()):

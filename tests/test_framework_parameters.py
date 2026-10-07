@@ -25,8 +25,8 @@ def test_invalid_parameters_never_allocate_a_worker(tmp_path, algorithm, configu
 
 
 def test_manifest_describes_parameters_and_supported_lifecycle():
-    from optimization_framework.optimizers.registry import METHODS
-    coordinate = next(item for item in METHODS if item["id"] == "coordinate")
+    from optimization_framework.optimizers.registry import methods
+    coordinate = next(item for item in methods() if item["id"] == "coordinate")
     assert coordinate["parameter_schema"]["properties"]["radius"]["maximum"] == 1
     assert coordinate["contract"] == "optimizer_v1"
     assert coordinate["batch_size"] == 1

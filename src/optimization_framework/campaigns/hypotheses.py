@@ -3,14 +3,14 @@ from optimization_framework.storage.sqlite import now
 
 
 def create(workspace, campaign_id, values, *, identity, bundle=None):
-    from optimization_framework.execution.service import ALGORITHMS
+    from optimization_framework.execution.service import algorithms
     campaign = workspace.store.get(campaign_id, "campaign")
     for parent in values.parent_ids:
         if workspace.store.get(parent, "hypothesis")["campaign_id"] != campaign_id:
             raise ValueError("Parents must belong to this campaign")
     record = {**values.model_dump(mode="json"), "id": identity, "created_at": now(),
         "charter_version": campaign["version"], "origin": "researcher", "reviews": [], "status_revision": 0,
-        "claim_level": "rationale_only", "executable": values.algorithm in {item["id"] for item in ALGORITHMS}}
+        "claim_level": "rationale_only", "executable": values.algorithm in {item["id"] for item in algorithms()}}
     if values.implementation_version_id:
         if bundle is None or bundle["version"]["id"] != values.implementation_version_id:
             raise ValueError("A verified implementation binding is required")
