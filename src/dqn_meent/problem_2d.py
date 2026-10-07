@@ -15,28 +15,20 @@ PROBLEM_ID = "meent_2d_dual_polarization_deflector"
 DEFINITION_VERSION = "flrl-2d-v1"
 EVALUATOR_VERSION = "meent-0.13.2-flrl-2d-v1"
 ORDER_CONVERGENCE_RECIPE = "meent_2d_order_convergence:v1"
-FLRL_OBJECTIVE = (
-    "Design one periodic 2D silicon/air freeform metasurface that sends 1050 nm light (normal incidence inferred from the "
-    "stated period relation) from silica (n=1.45) into transmitted diffraction order (+1, 0) at 75 degrees in x, for both "
-    "TE and TM incidence. The patterned layer is 325 nm thick, sampled on a 256 x 128 binary grid; "
-    "Px = 1050/sin(75 degrees) = 1087.0399894305872 nm and Py = 525 nm, with air above. The FLRL reference code's scalar "
-    "score is the equal-weight mean of the absolute +1 transmitted efficiencies for TE and TM, each divided by its own "
-    "incident power. Record both efficiencies and their minimum separately; the released FLRL code explicitly computes "
-    "(TE + TM)/2. The task describes physical binary designs. Fourier level-set coefficients with a real-valued level-set "
-    "function and geometry symmetric under y-to-minus-y reflection are a proposed search representation, not RCWA "
-    "truncation. Compare the paper's FLRL/PPO approach at level-set mode limits (Nx, Ny) = (2,1), (4,2), (6,3), and (8,4) "
-    "against matched-budget baselines using the installed 2D MEENT evaluator; verify RCWA convergence and cross-version "
-    "parity before reproduction claims. The manuscript's 93.5% best result at (8,4) is prior literature, not a measurement "
-    "in this campaign. The paper-code reference uses n(Si)=3.567390909 at 1050 nm by linear interpolation of its CSV n "
-    "column (ignoring k), MEENT 0.9.5, RCWA fto=(10,5), complex128 Torch CPU, normal incidence from silica to air, and "
-    "TE/TM pol=0/1. Validate its order indexing and convergence, independently check the evaluator, and measure "
-    "per-evaluation cost before trials. The released 2D training config has 100,000 timesteps, one environment, and four "
-    "stacked observations, whereas the manuscript describes 500,000 samples, four environments, and a three-step history; "
-    "treat these as distinct reference settings until reconciled. Sources: the Octavian FLRL manuscript (main text and "
-    "supplementary methods) and the released FLRL code at commit 7838e71313d71cee8e2db3b432f41f80b9106a95. This reported "
-    "condition is development evidence and must not be labeled an untouched test condition. The installed campaign "
-    "evaluator uses MEENT 0.13.2 and runs both polarizations; its current numerical checks cover uniform layers and an "
-    "x-only stripe, not arbitrary 2D-pattern convergence.")
+# The original FLRL campaign charter, rewritten for reading; exact values live in the configuration.
+FLRL_OBJECTIVE = """Design a periodic 2D silicon/air freeform metasurface that deflects 1050 nm light from silica (n = 1.45) into the transmitted (+1, 0) order at 75° in x, for both TE and TM polarization.
+
+Geometry: a 325 nm silicon layer sampled on a 256 × 128 binary grid, with periods Px = 1050 / sin 75° ≈ 1087.04 nm and Py = 525 nm and air above. Normal incidence is inferred from the stated period relation.
+
+Score: the mean of the absolute +1 TE and TM transmission efficiencies, each normalized by its own incident power, as the released FLRL code computes it ((TE + TM) / 2). Record TE, TM and their minimum separately.
+
+Comparison: run the paper's FLRL/PPO approach at Fourier level-set mode limits (Nx, Ny) = (2, 1), (4, 2), (6, 3) and (8, 4) against matched-budget baselines on the installed 2D MEENT evaluator. The level-set coefficients (real-valued, symmetric under y → −y) are a search representation, not an RCWA truncation; designs stay binary.
+
+Before reproduction claims: verify RCWA convergence and cross-version parity, check the evaluator independently (including its order indexing), and measure the cost of one evaluation. The paper's best result of 93.5% at (8, 4) is prior literature, not a measurement in this campaign.
+
+Reference settings: the paper's code uses n(Si) ≈ 3.5674 at 1050 nm (linear interpolation of its CSV n column, k ignored), MEENT 0.9.5, RCWA orders (10, 5), complex128 Torch on CPU, and TE/TM as pol = 0/1. Its released 2D training config (100,000 timesteps, one environment, four stacked observations) differs from the manuscript (500,000 samples, four environments, a three-step history); treat them as distinct reference settings until reconciled.
+
+Sources: the Octavian FLRL manuscript and supplementary methods, and the released FLRL code at commit 7838e71. This reported condition is development evidence, not an untouched test condition. The installed evaluator uses MEENT 0.13.2 and runs both polarizations; its numerical checks so far cover uniform layers and an x-only stripe, not arbitrary 2D patterns."""
 
 CONFIGURATION_SCHEMA = {
     "type": "object",

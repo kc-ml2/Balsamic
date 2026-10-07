@@ -134,3 +134,5 @@
 .markdown-content hr { border: 0; border-top: 1px solid #dfe7d5; margin: 1em 0; }
 .markdown-content .contains-task-list { list-style: none; padding-left: .2em; }
 .markdown-content .task-list-item input { width: auto; min-height: 0; margin-right: .5em; }
+.readable-text p+p{margin-top:8px}.readable-exact{text-decoration:underline dotted #b9c4b1;text-underline-offset:3px;cursor:help}
+.readable-more{display:inline;padding:0;font-size:inherit}.overview-activity{padding:0 22px 18px}.overview-activity p{font-size:12px}

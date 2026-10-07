@@ -43,6 +43,8 @@ Method:
    values) and explain in evaluator_notes what an evaluator must compute and which supplied code implements it.
 5. Write objective as the campaign charter: what to optimize and under which conditions, how results are scored,
    which reported numbers are prior literature rather than measurements, and what must be validated first.
+   A person reads it: use short paragraphs separated by blank lines, round derived numbers to the precision that
+   matters (exact values belong in configuration), and refer to commits by their short hash.
 
 Sizes: listings give each file's size and flag large (over 1 MB) and binary files. Large files are usually data,
 logs, checkpoints or generated code. Decide from the name, location and a first read of a few lines whether a file

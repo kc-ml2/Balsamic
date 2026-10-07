@@ -7,6 +7,7 @@ import { CharterHistory } from './views';
 import { EvaluatorRequest } from './evaluatorForms';
 import { useCommand } from './commands';
 import type { Task } from './api';
+import { ReadableText } from './readableText';
 
 type Props = { state: State; actions: WorkspaceActions };
 
@@ -22,15 +23,12 @@ function Candidate({ problem, values }: { problem?: Json; values?: number[] }) {
 
 export function GeneralOverview({ state, actions }: Props) {
   const active = state.trials.filter(t => activeStatuses.includes(t.status));
-  const study = state.studies?.find((s: Json) => s.id === state.campaign?.active_study_id);
   return <>
-    <div className="page-heading"><div><span className="eyebrow">Research campaign</span><h1>{state.campaign?.name}</h1><p>{state.campaign?.objective}</p></div>
+    <div className="page-heading"><div><span className="eyebrow">Research campaign</span><h1>{state.campaign?.name}</h1><ReadableText text={state.campaign?.objective} preview={2} /></div>
       <button className="button primary" onClick={() => actions.launch()}>Design an experiment</button></div>
-    <div className="problem-resources"><Panel title="Active study"><Badge>{study?.scope || 'Historical'}</Badge><p>{study?.goal || state.campaign?.objective}</p>
-      <p className="help-text">Scientific changes create a linked study. Optimizers can be specialized for this problem.</p></Panel>
-      <Panel title="Research activity"><p>{active.length} active experiments · {state.hypotheses.length} candidate methods</p>
-        <p>{seconds(state.budget?.spent_seconds || 0)} of {seconds(state.campaign?.compute_budget_seconds)} spent</p>
-        <button className="text-button" onClick={() => actions.navigate('experiments')}>Inspect experiments</button></Panel></div>
+    <Panel title="Research activity"><div className="overview-activity"><p>{active.length} active experiments · {state.hypotheses.length} candidate methods</p>
+      <p>{seconds(state.budget?.spent_seconds || 0)} of {seconds(state.campaign?.compute_budget_seconds)} spent</p>
+      <button className="text-button" onClick={() => actions.navigate('experiments')}>Inspect experiments</button></div></Panel>
     <Panel title="Objective by problem instance"><div className="configuration-grid">{state.tasks.map(task => {
       const objective = task.problem?.primary_objective;
       const measured = state.trials.filter(t => t.task_id === task.id && !t.diagnostic_grant_id && !t.recipe && best(t) !== undefined);
@@ -48,7 +46,7 @@ export function GeneralProblem({ state, actions }: Props) {
   const [selected, setSelected] = useState<Json | null>(null);
   const [commissioning, setCommissioning] = useState<Task | null>(null);
   const [history, setHistory] = useState(false);
-  return <><div className="page-heading"><div><span className="eyebrow">Problem workbench</span><h1>A shared definition of success.</h1><p>{state.campaign?.objective}</p></div>
+  return <><div className="page-heading"><div><span className="eyebrow">Problem workbench</span><h1>A shared definition of success.</h1><ReadableText text={state.campaign?.objective} /></div>
     <div className="inline-actions"><button className="button secondary" onClick={() => setHistory(true)}>Revision history</button>
       <button className="button primary" onClick={() => actions.campaign(true)}>Revise charter</button></div></div>
     <Panel title="Problem instances"><div className="configuration-grid">{state.tasks.map(task => <article className="configuration-card" key={task.id}>

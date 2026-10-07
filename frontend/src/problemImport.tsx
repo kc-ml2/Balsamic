@@ -3,6 +3,7 @@ import type { ComponentProps, FormEvent } from 'react';
 import { api, ApiError, errorText } from './api';
 import type { Json } from './api';
 import { Badge, Empty, ErrorNotice, Field, Icon, Panel as BasePanel, Status } from './ui';
+import { ReadableText } from './readableText';
 import './problemImport.css';
 
 function Panel({ children, ...props }: ComponentProps<typeof BasePanel>) {
@@ -142,14 +143,14 @@ function ImportDetail({ id, onChange, onUseDraft }: { id: string; onChange: () =
     {draft ? <Panel title={draft.title} eyebrow="Draft for review" action={<div className="inline-actions">
         <button className="button small primary" onClick={() => onUseDraft(draftExample(record))}>Use in a new campaign</button>
         <button className="button small secondary" disabled={busy} onClick={() => void act('/api/v1/problem-examples', { import_id: id }, 'Saved. It appears under “Start from” when you create a campaign.')}>Save as example</button></div>}>
-      <p className="import-summary">{draft.summary}</p>
-      <h3>Objective</h3><p className="import-objective">{draft.objective}</p>
+      <ReadableText className="import-summary" text={draft.summary} />
+      <h3>Objective</h3><ReadableText className="import-objective" text={draft.objective} />
       <h3>Problem instances</h3>{draft.instances.map((setup: Json, index: number) => <div key={index} className="import-instance">
         <strong>{setup.name}</strong> <Badge>{setup.evaluator_manifest ? `declared · ${setup.evaluator_manifest.id} · evaluator needed` : setup.problem_id}</Badge> <Badge>{setup.split}</Badge>
         {setup.rationale && <p className="help-text">{setup.rationale}</p>}
         <table className="data-table import-values"><tbody>{Object.entries({ ...setup.configuration, ...setup.fidelity }).map(([key, value]) => <tr key={key}><th>{key}</th><td>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</td></tr>)}</tbody></table>
         {setup.evaluator_manifest && <pre className="import-json">{JSON.stringify(setup.evaluator_manifest, null, 2)}</pre>}</div>)}
-      {draft.evaluator_notes && <><h3>Evaluator notes</h3><p className="import-objective">{draft.evaluator_notes}</p></>}
+      {draft.evaluator_notes && <><h3>Evaluator notes</h3><ReadableText className="import-objective" text={draft.evaluator_notes} /></>}
       <div className="import-lists">
         <div><h3>Assumptions</h3>{draft.assumptions.length ? <ul>{draft.assumptions.map((item: string, i: number) => <li key={i}>{item}</li>)}</ul> : <p className="help-text">None recorded.</p>}</div>
         <div><h3>Open questions</h3>{draft.open_questions.length ? <ul>{draft.open_questions.map((item: string, i: number) => <li key={i}>{item}</li>)}</ul> : <p className="help-text">None recorded.</p>}</div></div>
