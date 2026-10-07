@@ -1,7 +1,9 @@
 # Pi campaign runtime
 
 Campaigns activated with `agent.activate` use the installed Pi SDK (pinned at
-0.87.1) and the `openai-codex` subscription provider. The PI uses `gpt-6-astra`;
+1.0.4 in `agent-harness/package.json`) and, without a dev profile, the
+`openai-codex` subscription provider. The optional development container image
+(`deploy/implementation-workspace`) installs the Pi CLI 0.87.1. The PI uses `gpt-6-astra`;
 specialists use `gpt-6-sol`; proposal and implementation reviewers use Astra.
 All sessions currently use `xhigh` reasoning. Models are pinned for each session;
 historical chat/discovery model settings do not alter a Pi session. No paid API
@@ -84,7 +86,7 @@ A scoped profile is prepared in `deploy/grating-bwrap.apparmor` and passes the
 AppArmor parser's offline syntax check. An administrator must load it:
 
 ```bash
-cd /home/chs/Work/dqn-meent
+# from the repository root
 sudo install -m 0644 deploy/grating-bwrap.apparmor /etc/apparmor.d/grating-bwrap
 sudo apparmor_parser -r /etc/apparmor.d/grating-bwrap
 ```

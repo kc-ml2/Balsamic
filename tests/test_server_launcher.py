@@ -127,6 +127,19 @@ def test_explicit_codex_timeout_survives_launcher_environment(setup, monkeypatch
             launcher.configuration(path)
 
 
+def test_paper_reference_is_optional_and_reaches_services(setup, monkeypatch):
+    config, path, _, _, _ = setup
+    monkeypatch.delenv("GRATING_PAPER_REFERENCE", raising=False)
+    assert "GRATING_PAPER_REFERENCE" not in launcher.service_environment(launcher.configuration(path))
+    path.write_text(json.dumps({**config, "paper_reference": "~/papers/main text.pdf"}))
+    actual = launcher.configuration(path)
+    assert launcher.service_environment(actual)["GRATING_PAPER_REFERENCE"] == str(Path.home() / "papers/main text.pdf")
+    for invalid in ("", " ", 1, True):
+        path.write_text(json.dumps({**config, "paper_reference": invalid}))
+        with pytest.raises(launcher.LauncherError, match="paper_reference"):
+            launcher.configuration(path)
+
+
 def test_real_services_restart_keep_campaign_and_only_remove_their_route(setup):
     config, path, runtime, ts_path, run = setup
     original_routes = json.loads(ts_path.read_text())

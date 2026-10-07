@@ -110,9 +110,9 @@ class DockerWorkspace:
                 tar.extractall(target, filter="data")
             archive.unlink()
             (root / "references/flrl.commit").write_text(run(["git", "-C", str(flrl), "rev-parse", "HEAD"]))
-        paper = Path(os.environ.get("GRATING_PAPER_REFERENCE",
-            "/home/chs/Dropbox/MEENT/Kevin/Final_Draft_IEEE_Template_Main Text.pdf"))
-        if paper.is_file() and paper.stat().st_size < 50 * 1024 * 1024:
+        # Optional paper PDF; set GRATING_PAPER_REFERENCE or the launcher's `paper_reference`.
+        paper = Path(os.environ.get("GRATING_PAPER_REFERENCE", "")).expanduser()
+        if paper.name and paper.is_file() and paper.stat().st_size < 50 * 1024 * 1024:
             target = root / "references/paper.pdf"
             if not target.exists():
                 shutil.copy2(paper, target)

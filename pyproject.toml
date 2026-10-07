@@ -45,4 +45,4 @@ packages = ["src/dqn_meent", "src/optimization_framework", "src/optimization_ben
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]

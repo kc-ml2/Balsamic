@@ -10,20 +10,36 @@ The original reconstruction of the DQN optimization loop in Seo et al., *Structu
 
 ## Start here
 
-Use Linux, Python 3.12 or 3.13, [uv](https://docs.astral.sh/uv/), and a supported Node.js installation. From this directory:
+The only requirements are Linux, Python 3.12 or 3.13, [uv](https://docs.astral.sh/uv/), and Node.js 22.19 or newer with npm. From a fresh clone:
 
 ```bash
 uv sync --frozen --all-extras
-cd frontend
-npm ci
-npm run build
-cd ..
+(cd frontend && npm ci && npm run build)
 uv run --no-sync optimization-lab --directory runs/workspace --workers 2 --port 8765
 ```
 
 Open **http://127.0.0.1:8765**. Create a campaign, define development configurations and budgets, then launch a small experiment or discuss a hypothesis with the research partner. Data remain in the workspace directory after closing the browser.
 
-**Codex with `gpt-6-sol` is the default for every research role, with model execution disabled until you configure it.** The dashboard and numerical experiments work immediately; research requests remain in the campaign's durable inbox while configuration is deferred. Codex uses your subscription allowance, tracked separately from paid API spending. Existing `.key` credentials are ignored unless you explicitly enable an API provider, and there is no automatic paid fallback. See the [workspace guide](docs/workspace.md) when you are ready to configure Codex, and for workflows, custom algorithms, and recovery.
+**No model provider is required.** Model execution is disabled until you configure one: the dashboard and numerical experiments work immediately, and research requests remain in the campaign's durable inbox. When enabled, research roles default to Codex with `gpt-6-sol`, which uses your subscription allowance and is tracked separately from paid API spending. Existing `.key` credentials are ignored unless you explicitly enable an API provider, and there is no automatic paid fallback. See the [workspace guide](docs/workspace.md) when you are ready to configure a provider, and for workflows, custom algorithms, and recovery.
+
+### Optional components
+
+Each component below enables one feature; everything else runs without it.
+
+| Component | Enables | Setup |
+|---|---|---|
+| Codex CLI | Research roles with the default `codex` provider | `codex login --device-auth`; see [server control](docs/server-control.md) |
+| Pi agent harness | Pi campaigns and `scripts/pi-dev` | `(cd agent-harness && npm ci && npm run build)`; sign in from the notebook, or put provider keys in `~/.config/balsamic/secrets.env` ([Pi runtime](docs/pi-agent-harness.md)) |
+| bubblewrap (`bwrap`) | Executing generated and custom optimizer packages | Distribution package; Ubuntu also needs `deploy/grating-bwrap.apparmor` ([Pi runtime](docs/pi-agent-harness.md#host-prerequisite-found-during-rollout)) |
+| Docker | Full development workspaces with a browser IDE | `docker build -t grating-implementation-workspace:pi-0.87.1 deploy/implementation-workspace`, then set `development_enabled` |
+| `mask-optimizers` 0.1.0 | The `motif_surgery`, `nested_fourier` and `phenotype_de` methods | Install its wheel into `.venv` ([FLRL implementations](docs/flrl-implementations.md#standalone-mask-library-in-this-campaign)); `uv sync` removes it, so reinstall after syncing |
+| Paper and FLRL references | `/references` inside development workspaces | Set `paper_reference` in the launcher JSON or `GRATING_PAPER_REFERENCE`; clone `jLabKAIST/flrl` beside this repository or set `GRATING_FLRL_REFERENCE` |
+| Tailscale and `socat` | Remote access to the dashboard | [Server control](docs/server-control.md) |
+| Chrome or Playwright Chromium | Browser tests | `npx playwright install chromium` |
+
+The launcher configurations and service units in `deploy/` describe particular hosts; copy and edit one for a new machine.
+
+Git does not carry `runs/` (campaign databases, checkpoints and logs), provider credentials (`.key`, `~/.codex`, `~/.pi/agent/auth.json`, `~/.config/balsamic/secrets.env`), or sibling checkouts. To continue existing campaigns on another machine, stop the lab and copy the workspace directory, for example `rsync -a runs/workspace/ other-host:dqn-meent/runs/workspace/`.
 
 The [implementation evidence map](docs/implementation-status.md) connects the [research-system plan](docs/agentic-algorithm-discovery-plan.md) to code, tests, and unverified research outcomes.
 
@@ -39,6 +55,8 @@ uv run --no-sync dqn-meent evaluate --run runs/smoke --orders 5 15 25 40
 uv run --no-sync dqn-meent design --run runs/smoke --output runs/smoke/design.png
 uv run --no-sync pytest -q
 ```
+
+The full test suite takes about 15 minutes on CPU. Without `mask-optimizers`, the tests in `tests/test_mask_library_campaign.py` and one native-confirmation test in `tests/test_framework_racing.py` fail with "Install mask-optimizers 0.1.0".
 
 The lock file pins the environment. PyTorch's default Linux distribution can download several GB of CUDA dependencies even when using CPU. A GPU is **not required**. This setup uses NumPy/complex128 for MEENT and CPU PyTorch by default; `training.device="cuda"` moves only the Q-network, not the optical solver. Small Q-networks and 1D RCWA are often suitable for CPU. The CLI limits BLAS to one thread; training likewise defaults to one PyTorch thread.
 

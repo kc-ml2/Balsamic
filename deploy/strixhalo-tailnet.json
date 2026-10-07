@@ -12,5 +12,6 @@
   "model": "gpt-6-sol",
   "llm_enabled": true,
   "codex_timeout_seconds": 600,
-  "pi_profile": "agent-harness/profiles/dev"
+  "pi_profile": "agent-harness/profiles/dev",
+  "paper_reference": "~/Dropbox/MEENT/Kevin/Final_Draft_IEEE_Template_Main Text.pdf"
 }

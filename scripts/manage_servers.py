@@ -63,6 +63,11 @@ def configuration(path, no_llm=False):
         if not (Path(config["pi_profile"]) / "settings.json").is_file():
             raise LauncherError(f"Pi profile has no settings.json: {config['pi_profile']}")
         config["secrets_file"] = str(Path(config.get("secrets_file") or "~/.config/balsamic/secrets.env").expanduser())
+    # Optional paper PDF copied into development workspaces as /references/paper.pdf.
+    if config.get("paper_reference") is not None:
+        if not isinstance(config["paper_reference"], str) or not config["paper_reference"].strip():
+            raise LauncherError("paper_reference must be a nonempty path or null.")
+        config["paper_reference"] = str((ROOT / Path(config["paper_reference"]).expanduser()).resolve())
     ports = [config["workspace_port"], config["implementation_port"]]
     if config.get("pi_port") is not None:
         ports.append(config["pi_port"])
@@ -199,6 +204,8 @@ def service_environment(config):
                PYTHONUNBUFFERED="1")
     if "codex_timeout_seconds" in config:
         env["GRATING_CODEX_TIMEOUT_SECONDS"] = str(config["codex_timeout_seconds"])
+    if config.get("paper_reference"):
+        env["GRATING_PAPER_REFERENCE"] = config["paper_reference"]
     # The token file must identify this library, even if another service's token
     # happens to be present in the calling shell.
     env.pop("GRATING_IMPLEMENTATIONS_TOKEN", None)
