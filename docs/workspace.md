@@ -156,6 +156,10 @@ Old `algorithm: "custom"` source and protocol-verification records remain histor
 
 The current evaluator exposes `binary_forward`. Continuous designs, RCWA gradients, and new objectives require a separate evaluator extension. Unsupported capabilities create a campaign manager issue, rather than a pretend successful implementation.
 
+## Formulate the problem with the lead agent
+
+When the problem itself is not yet defined, write it down in **Formulation**. The page holds a notebook of text cells with equations and code cells, which the lead agent writes at your request and you read beside the conversation. You agree to a cell, edit it, look at its history, or start a message about it with Discuss. Saving an edit starts no agent; write in the conversation for that. **Run all** runs the code cells in a sandbox and shows what each produced; the notebook downloads as Markdown or as a marimo notebook. The [formulation notebook guide](formulation-notebook.md) describes the page, the statuses of a cell and how a formulation is laid out.
+
 ## Campaign manager and durable context
 
 The campaign manager is the interface for unexpected failures, unresolved capabilities, stale actions, and implementation questions. Ordinary launch, pause, stop, extend, and charter controls remain directly available. Manager messages queue durably while another turn runs. A new researcher direction makes outstanding recommendations stale; older turns cannot silently dispatch their actions against newer guidance.

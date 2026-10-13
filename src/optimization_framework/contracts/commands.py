@@ -11,7 +11,7 @@ Operation = Literal["agent.activate", "agent.message", "agent.control", "agent.r
     "models.configure", "discovery.start", "discovery.control", "discovery.amend", "discovery.retry", "discovery.assessment.save", "discovery.assessment.launch", "discovery.assessment.decide", "asset.snapshot",
     "validation.revoke_waiver", "context.import", "inference.run", "asset.reuse", "asset.import_reference_set", "cost.reconcile", "comparison.report", "finding.record", "implementation.commission",
     "implementation.reference", "implementation.bind_builtin", "implementation.attach", "evaluator.commission", "evaluator.attach", "implementation.control", "implementation.revalidate", "implementation.reuse", "implementation.resolve_runtime", "bundle.export", "bundle.inspect", "bundle.publish", "research.start", "research.retry", "research.control", "decision.resolve", "decision.refresh", "source.record", "source.ingest", "hypothesis.create", "hypothesis.review", "hypothesis.status", "hypothesis.nominate", "literature.search", "confirmation.schedule", "confirmation.validate", "confirmation.release",
-    "runtime.profile", "evaluator.equivalence", "trial.continue", "journal.compact", "journal.compaction_request", "approval.request", "workers.set"]
+    "runtime.profile", "evaluator.equivalence", "trial.continue", "journal.compact", "journal.compaction_request", "approval.request", "workers.set", "formulation.edit"]
 
 
 class Command(Contract):

@@ -172,31 +172,22 @@ def interpreter():
     return roots
 
 
-def analysis_run(tools, agent, args):
-    """Run the agent's own script over the experiments it names, in a sandbox that can read them and write only its work directory."""
-    work = tools.workspace.directory / "agents" / agent["id"] / "work"
-    work.mkdir(parents=True, exist_ok=True)
-    script = relative(args["path"])
-    if not (work / script).is_file() or (work / script).is_symlink() or not (work / script).resolve().is_relative_to(work.resolve()):
-        raise ValueError("Write the script into your work directory with workspace_write first")
-    trials = [tools.record(agent, identity) for identity in dict.fromkeys(args.get("trial_ids", []))]
-    if any(tools.store.get_entry(trial["id"])["kind"] != "trial" for trial in trials):
-        raise ValueError("trial_ids names this campaign's experiments")
-    used = sum(session.get("analysis_seconds", 0) for session in tools.store.list("agent_session", agent["campaign_id"]))
-    seconds = min(args.get("seconds", 60), ANALYSIS_SECONDS_PER_CAMPAIGN - used)
-    if seconds <= 0:
-        raise ValueError(f"This campaign's agents have used their {ANALYSIS_SECONDS_PER_CAMPAIGN:g} s of analysis time")
+def sandbox_command(work, *, read_only=()):
+    """The start of a sandboxed command line: it sees the interpreter, this checkout's source and each
+    (host path, path inside) of `read_only`, writes only `work` (mounted at /work), and has no network."""
     if not shutil.which("bwrap"):
         raise ValueError("Sandboxed analysis requires bubblewrap on this server")
     command = ["bwrap", "--die-with-parent", "--unshare-all", "--new-session", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
     for root in dict.fromkeys(["/usr", "/lib", "/lib64", "/bin", *interpreter(), str(REPOSITORY / "src")]):
         if Path(root).exists():
             command += ["--ro-bind", root, root]
-    for trial in trials:
-        command += ["--ro-bind", str(tools.workspace.job_dir(trial["id"])), "/data/" + trial["id"]]
-    wrapper = ("import resource,runpy,sys; resource.setrlimit(resource.RLIMIT_FSIZE,(64<<20,64<<20)); "
-               "resource.setrlimit(resource.RLIMIT_NOFILE,(256,256)); runpy.run_path(sys.argv[1],run_name='__main__')")
-    command += ["--bind", str(work), "/work", "--chdir", "/work", sys.executable, "-c", wrapper, str(script)]
+    for source, inside in read_only:
+        command += ["--ro-bind", str(source), inside]
+    return command + ["--bind", str(work), "/work", "--chdir", "/work"]
+
+
+def run_sandboxed(command, seconds):
+    """Run a sandboxed command to its end or for `seconds`. Returns (how it ended, the end of its output, seconds taken)."""
     started = time.monotonic()
     with tempfile.TemporaryFile() as stdout, tempfile.TemporaryFile() as stderr:
         child = subprocess.Popen(command, stdout=stdout, stderr=stderr, start_new_session=True,
@@ -220,7 +211,27 @@ def analysis_run(tools, agent, args):
             output[key] = stream.read(OUTPUT_BYTES).decode(errors="replace")
             if size > OUTPUT_BYTES:
                 output[key + "_bytes_before_this_end"] = size - OUTPUT_BYTES
-    elapsed = time.monotonic() - started
+    return status, output, time.monotonic() - started
+
+
+def analysis_run(tools, agent, args):
+    """Run the agent's own script over the experiments it names, in a sandbox that can read them and write only its work directory."""
+    work = tools.workspace.directory / "agents" / agent["id"] / "work"
+    work.mkdir(parents=True, exist_ok=True)
+    script = relative(args["path"])
+    if not (work / script).is_file() or (work / script).is_symlink() or not (work / script).resolve().is_relative_to(work.resolve()):
+        raise ValueError("Write the script into your work directory with workspace_write first")
+    trials = [tools.record(agent, identity) for identity in dict.fromkeys(args.get("trial_ids", []))]
+    if any(tools.store.get_entry(trial["id"])["kind"] != "trial" for trial in trials):
+        raise ValueError("trial_ids names this campaign's experiments")
+    used = sum(session.get("analysis_seconds", 0) for session in tools.store.list("agent_session", agent["campaign_id"]))
+    seconds = min(args.get("seconds", 60), ANALYSIS_SECONDS_PER_CAMPAIGN - used)
+    if seconds <= 0:
+        raise ValueError(f"This campaign's agents have used their {ANALYSIS_SECONDS_PER_CAMPAIGN:g} s of analysis time")
+    command = sandbox_command(work, read_only=[(tools.workspace.job_dir(trial["id"]), "/data/" + trial["id"]) for trial in trials])
+    wrapper = ("import resource,runpy,sys; resource.setrlimit(resource.RLIMIT_FSIZE,(64<<20,64<<20)); "
+               "resource.setrlimit(resource.RLIMIT_NOFILE,(256,256)); runpy.run_path(sys.argv[1],run_name='__main__')")
+    status, output, elapsed = run_sandboxed([*command, sys.executable, "-c", wrapper, str(script)], seconds)
     with tools.workspace.lock:
         session = tools.store.get(agent["id"], "agent_session")
         session["analysis_seconds"] = session.get("analysis_seconds", 0) + elapsed

@@ -7,7 +7,8 @@ import { ManagerIssues } from './implementations';
 import { useCommand } from './commands';
 import { AgentLog } from './agentLog';
 import { DiscoveryPanel } from './discovery';
-import { PiConversation } from './piAgents';
+import { PiConversation, usePrefill } from './piAgents';
+import type { Prefill } from './piAgents';
 import { TextContent } from './textContent';
 export { TextContent } from './textContent';
 
@@ -87,14 +88,16 @@ function RequestStatus({ state, request, refresh, resumeDiscovery }: {
   </div>;
 }
 
-export function ResearchPanel({ state, onClose, refresh, onResearch }: { state: State; onClose: () => void; refresh: () => Promise<void>; onResearch?: (message: string, mode: string) => void }) {
-  if (state.agent_runtime?.configuration?.enabled) return <PiConversation key={state.campaign?.id} state={state} refresh={refresh} onClose={onClose} />;
-  return <LegacyResearchPanel state={state} onClose={onClose} refresh={refresh} onResearch={onResearch} />;
+type PanelProps = { state: State; onClose: () => void; refresh: () => Promise<void>; onResearch?: (message: string, mode: string) => void; prefill?: Prefill | null; onPrefilled?: () => void };
+export function ResearchPanel({ state, onClose, refresh, onResearch, prefill, onPrefilled }: PanelProps) {
+  if (state.agent_runtime?.configuration?.enabled) return <PiConversation key={state.campaign?.id} state={state} refresh={refresh} onClose={onClose} prefill={prefill} onPrefilled={onPrefilled} />;
+  return <LegacyResearchPanel state={state} onClose={onClose} refresh={refresh} onResearch={onResearch} prefill={prefill} onPrefilled={onPrefilled} />;
 }
 
-function LegacyResearchPanel({ state, onClose, refresh, onResearch }: { state: State; onClose: () => void; refresh: () => Promise<void>; onResearch?: (message: string, mode: string) => void }) {
+function LegacyResearchPanel({ state, onClose, refresh, onResearch, prefill, onPrefilled }: PanelProps) {
   const command = useCommand(state.campaign);
   const [text, setText] = useState(''), [mode, setMode] = useState('discuss'), [busy, setBusy] = useState(false), [error, setError] = useState('');
+  usePrefill(prefill, onPrefilled, setText);
   const bottom = useRef<HTMLDivElement>(null);
   const messages = state.messages;
   const provider = providerStatus(state);

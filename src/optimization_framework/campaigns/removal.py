@@ -44,6 +44,7 @@ IN_PROGRESS = {   # kind: (statuses, what one of them is doing, what several are
     "report_writer_job": ({"running", "awaiting_focus"}, "report is being written", "reports are being written", "Cancel or finish this first."),
     "development_workspace": ({"queued", "starting", "running", "resuming", "pausing", "stopping"}, "development workspace is active",
                               "development workspaces are active", "Stop this first."),
+    "formulation_run": ({"running"}, "run of the formulation notebook is in progress", "runs of the formulation notebook are in progress", "Wait until this is finished."),
     "outbox": ({"pending"}, "background step is not delivered yet", "background steps are not delivered yet", "Try again in a moment."),
 }
 # Left out of the kept records: one row per evaluation, and what the agents' tools sent and received.
@@ -371,6 +372,9 @@ class CampaignRemoval:
             summary = self.summary(campaign_id, keep)
             write_json(partial / "summary.json", summary)
             (partial / "summary.md").write_text(self.markdown(summary), encoding="utf-8")
+            if self.workspace.formulation.summary(campaign_id):
+                # The formulation is what the campaign wrote, not a measurement of it: it stays with either choice.
+                (partial / "formulation.md").write_text(self.workspace.formulation.export_markdown(campaign_id), encoding="utf-8")
             if keep == "records":
                 self._keep_records(campaign_id, partial)
             for path in partial.rglob("*"):

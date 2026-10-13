@@ -9,6 +9,7 @@ export function Icon({ name, size = 20 }: { name: string; size?: number }) {
     experiments: <><path d="M9 3h6m-5 0v6L4 19a1.5 1.5 0 0 0 1 2h14a1.5 1.5 0 0 0 1-2L14 9V3M7 15h10" /></>,
     comparison: <><path d="M4 3v17h17M8 15l4-5 4 2 5-7" /></>,
     decisions: <><path d="M9 12l2 2 4-4" /><rect x="4" y="4" width="16" height="17" rx="3" /><path d="M9 4V2h6v2" /></>,
+    sigma: <path d="M18 6V4H6l7 8-7 8h12v-2" />,
     notebook: <><path d="M5 3h14a1 1 0 0 1 1 1v17H6a3 3 0 0 1-3-3V5a2 2 0 0 1 2-2Zm-2 15a3 3 0 0 1 3-3h14M8 7h8m-8 4h5" /></>,
     plus: <path d="M12 5v14M5 12h14" />,
     arrow: <path d="M5 12h14m-6-6 6 6-6 6" />,

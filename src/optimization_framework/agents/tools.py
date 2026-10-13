@@ -11,6 +11,7 @@ import time
 
 from optimization_framework.contracts.base import content_hash
 from optimization_framework.contracts.commands import Command
+from optimization_framework.contracts.formulation import CELL_NAME, OPERATIONS_PER_EDIT, SOURCE_CHARACTERS
 from optimization_framework.storage.sqlite import now
 from optimization_framework.research.discovery.record_view import view_record
 from .models import ROLES, LEAD
@@ -24,7 +25,8 @@ READ_KINDS = {"campaign", "task", "hypothesis", "source", "source_capture", "sou
     "agent_alias", "agent_artifact", "agent_run", "agent_question", "agent_tool_receipt", "fixed_mask_job", "fixed_mask_report",
     "builtin_binding", "manager_state", "message", "methodology_family", "discovery_reference_correction", "discovery_task_resolution", "research_run", "work_command",
     "adaptive_race", "race_protocol", "race_decision", "race_endpoint", "race_confirmation_roster",
-    "race_resource_calibration", "race_fidelity_amendment", "race_execution_lease"}
+    "race_resource_calibration", "race_fidelity_amendment", "race_execution_lease",
+    "formulation_notebook", "formulation_cell", "formulation_run"}
 OPERATIONS = {"hypothesis.create", "hypothesis.review", "hypothesis.status", "draft.save", "draft.launch", "trial.create",
     "trial.control", "trial.extension_request", "implementation.commission", "implementation.attach", "implementation.revalidate", "implementation.bind_builtin",
     "implementation.resolve_runtime", "evaluator.commission", "evaluator.attach", "finding.record", "comparison.report",
@@ -95,6 +97,26 @@ campaign's experiments (root "experiment" with a trial_id). Read the code or the
 To analyse journals or results beyond what a record shows, write a Python script with workspace_write and run it with analysis_run: the
 experiments you name are mounted read-only at /data/<trial_id>; numpy and optimization_framework.execution.metrics (scalar_rows, full_row,
 recent_metrics) can be imported; there is no network and no GPU. Print a short result: whatever a tool returns stays in your context.
+The formulation notebook is where a problem that is still being defined is written down: Markdown cells with equations and code
+cells, shared with the researcher, who reads it beside this conversation, edits it, and marks cells agreed. When a request
+concerns what the problem is (its decisions, objective, constraints, data or assumptions), work in the notebook and keep the
+reply short: say what changed and link each cell as [name](#formulation/name). Read docs/formulation-notebook.md with file_read
+before your first edit.
+notebook_read gives the outline with each cell's revision and the cells changed since you last read them; name cells to read
+them in full. notebook_edit applies a batch of create, update, delete and move operations together or not at all: an update or
+a delete names the revision you read and is refused if the cell changed since. One item of the formulation is a Markdown cell
+that states it in words and as an equation ($...$ inline, $$...$$ displayed, \\$ for a dollar sign), followed by the code cell
+that implements it; a name is defined in one code cell only. What the researcher has to answer is an open cell, one question
+per cell, and what is assumed is marked as assumed. Only the researcher marks a cell agreed; changing an agreed cell needs a
+reason and makes it proposed again. A question about a cell is answered in the reply: change a cell only when the request asks
+for it. The campaign's tasks may hold a placeholder problem while the real one is being formulated.
+The notebook's code cells run together, top to bottom, in a fresh sandbox each time: nothing carries over between runs, and there
+is no network. notebook_scratch runs the cells and then your code, and keeps nothing: try a constraint or a solve there first.
+notebook_run runs the cells and keeps what each printed, showed or drew for the researcher; run it after changing code, read every
+cell's outcome, and fix what failed before reporting. In a cell, the last expression is shown, and nb.md(text), nb.tex(latex),
+nb.table(rows, headers) and nb.show(value) show more; a matplotlib figure left open is kept as a picture. numpy, scipy, sympy and
+pyomo with the HiGHS solver (pyo.SolverFactory("appsi_highs")) can be imported. Write the model in Pyomo as the guide describes:
+nb.show of a constraint, the objective or the model then shows the equation generated from the code, beside the one you wrote.
 End every turn with yield_work. waiting: jobs or subagents you started for the request are still running, or you asked the
 researcher something; their completion or the answer wakes you. complete: the request is fulfilled or the question answered;
 nothing wakes you until the researcher writes again. The researcher reads what you write during a turn, in order: write the
@@ -170,6 +192,24 @@ TOOLS = {
     "analysis_run": ("Run a Python script from your work directory in a sandbox with the named experiments mounted read-only at /data/<trial_id>. "
         "No network, no GPU; numpy and the framework's journal readers are available. Returns the end of its output.",
         obj({"path": S, "trial_ids": {"type": "array", "items": S, "maxItems": 40}, "seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 300}}, ["path"])),
+    "notebook_read": ("Read the campaign's formulation notebook. Without cells: its outline, with each cell's name, status and revision, and the "
+        "cells changed since you last read them. With cells (names or ids): those cells in full.",
+        obj({"cells": {"type": "array", "items": S, "minItems": 1, "maxItems": 40}})),
+    "notebook_edit": ("Change the formulation notebook with a batch of cell operations, applied together or not at all. create: kind and source, "
+        "optionally name, status and before or after. update: cell, expected_revision, and the name, source or status to change. "
+        "delete: cell and expected_revision. move: cell and before or after. A cell is named by its name or its id.",
+        obj({"operations": {"type": "array", "minItems": 1, "maxItems": OPERATIONS_PER_EDIT, "items": obj({
+                "op": {"enum": ["create", "update", "delete", "move"]}, "cell": S, "expected_revision": {"type": "integer", "minimum": 1},
+                "kind": {"enum": ["markdown", "code"]}, "name": {"type": "string", "pattern": CELL_NAME},
+                "source": {"type": "string", "minLength": 1, "maxLength": SOURCE_CHARACTERS},
+                # Agreement is the researcher's, so it is not a value an agent can send.
+                "status": {"enum": ["proposed", "open"]}, "before": S, "after": S}, ["op"])},
+             "reason": {"type": "string", "maxLength": 2000}}, ["operations", "reason"])),
+    "notebook_run": ("Run every code cell of the formulation notebook, top to bottom, in a fresh sandbox, and keep what each produced for the "
+        "researcher to see. Returns each cell's outcome. No network; a run is stopped after 90 s.", obj()),
+    "notebook_scratch": ("Try code against the notebook without changing it: runs the notebook's code cells, then your code, in one fresh "
+        "sandboxed process, and keeps nothing. Your code sees every name the cells define; its last expression is shown.",
+        obj({"code": {"type": "string", "minLength": 1, "maxLength": SOURCE_CHARACTERS}, "seconds": {"type": "number", "exclusiveMinimum": 0, "maximum": 60}}, ["code"])),
     "workspace_list": ("List the files of your own work directory.", obj()),
     "workspace_read": ("Read a text file from your own work directory.", obj({"path": S}, ["path"])),
     "workspace_write": ("Write a file in your own work directory: a package or test file, or an analysis script for analysis_run.", obj({"path": S, "content": S}, ["path", "content"])),
@@ -185,9 +225,9 @@ class PiTools:
 
     def names(self, agent):
         names = {"campaign_inspect", "resource_inspect", "evidence_search", "evidence_read", "source_search", "source_ingest", "source_read", "artifact_save", "mask_create", "yield_work",
-                 "file_list", "file_read", "file_search", "workspace_list", "workspace_read", "workspace_write", "analysis_run"}
+                 "file_list", "file_read", "file_search", "workspace_list", "workspace_read", "workspace_write", "analysis_run", "notebook_read", "notebook_scratch"}
         if agent["role"] == LEAD:
-            names |= {"delegate", "agent_message", "agent_cancel", "command_schema", "campaign_command", "researcher_ask",
+            names |= {"delegate", "agent_message", "agent_cancel", "command_schema", "campaign_command", "researcher_ask", "notebook_edit", "notebook_run",
                       "implementation_workspace_create", "implementation_workspace_inspect", "implementation_workspace_message",
                       "implementation_workspace_validate"}
         if agent["role"] == "proposal_reviewer":
@@ -272,7 +312,7 @@ class PiTools:
             self.store.put_immutable("agent_tool_receipt", {"id": identity, "campaign_id": agent["campaign_id"],
                 "agent_id": agent_id, "run_id": run_id, "tool": name, "request_hash": request_hash, "result": result,
                 "created_at": now()}, "agent.tool_completed")
-        if name in {"artifact_save", "mask_create", "proposal_review", "delegate", "agent_message", "agent_cancel", "researcher_ask", "yield_work", "submit_output"}:
+        if name in {"artifact_save", "mask_create", "proposal_review", "delegate", "agent_message", "agent_cancel", "researcher_ask", "yield_work", "submit_output", "notebook_edit"}:
             # Local changes and their acknowledgment commit together. External
             # I/O and idempotent command delivery never hold a SQL transaction.
             with self.workspace.lock, self.store.transaction():
@@ -365,6 +405,7 @@ class PiTools:
             "resources": {"experiments": self.workspace.resources.assessment(campaign_id),
                 "implementation_committed_seconds": self.workspace.implementations.compute_committed(campaign_id)},
             "adaptive_testing": races,
+            "formulation": self.workspace.formulation.inspect(campaign_id, agent["id"]),
             "agent_team": team_view,
             "latest_researcher_requests": [{"id": r["id"], "status": r["status"], "message": r["request"]["message"]}
                 for r in self.store.list("manager_command", campaign_id)[-5:]],
@@ -550,6 +591,14 @@ class PiTools:
             saved_run = self.store.get(run["id"], "agent_run")
             saved_run["output"] = args["result"]; self.store.put("agent_run", saved_run)
             return {"saved": True}
+        if name == "notebook_read":
+            return self.workspace.formulation.read(cid, cells=args.get("cells"), reader_id=agent["id"])
+        if name == "notebook_edit":
+            return self.workspace.formulation.edit(cid, args["operations"], author=agent["role"], author_id=agent["id"], reason=args["reason"])
+        if name == "notebook_run":
+            return self.workspace.formulation.report(cid, self.workspace.formulation.run(cid, requested_by=agent["role"]))
+        if name == "notebook_scratch":
+            return self.workspace.formulation.scratch(cid, args["code"], seconds=args.get("seconds", 30))
         if name.startswith("file_"):
             from .files import Files
             return getattr(Files(self, agent), name.removeprefix("file_"))(args)

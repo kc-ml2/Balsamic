@@ -118,6 +118,28 @@ The lead agent files `journal.compaction_request` when the researcher asks for t
 results are analysed and recorded; the researcher approves it in the decision inbox, and only then are evaluated designs removed from
 the finished experiments' journals.
 
+### The formulation notebook
+
+A campaign whose problem is still being defined keeps its formulation in a notebook of Markdown and code cells, shared with the
+researcher on the **Formulation** page ([guide](formulation-notebook.md)). Every agent without an implementation grant reads it with
+`notebook_read`; the lead agent changes it with `notebook_edit`, a batch of create, update, delete and move operations that is applied
+together or not at all. An update or a delete names the revision the agent read and is refused if the cell changed since. Only the
+researcher marks a cell agreed; an agent's change to an agreed cell needs a reason and makes it proposed again.
+
+These are plain tools, not campaign commands: writing in the notebook launches nothing and spends no compute, so it needs no guidance
+revision. The researcher's own edits go through the `formulation.edit` command, which changes no guidance revision and starts no agent
+turn. `campaign_inspect` lists the cells changed since the agent last read them, so the lead notices the researcher's edits at its next turn.
+
+The code cells run together, top to bottom, in the same bubblewrap sandbox as `analysis_run`: a fresh process per run, no network, no GPU,
+nothing of the host but the interpreter and the framework's source, and at most 90 s. `notebook_scratch` runs the cells and then the
+agent's own code and keeps nothing; `notebook_run` (lead agent only) keeps each cell's printed text, shown values and figures for the
+researcher's page. The run directory is the one place the cells can write, so its result is rebuilt field by field and a picture is kept
+only if it is a regular PNG file. A campaign's agents share 3,600 s of notebook run time; the researcher's own runs are not counted.
+
+The `formulation` extra installs what the cells import: `scipy`, `sympy`, `matplotlib`, `pyomo` and `highspy`. `nb.show` of a Pyomo
+constraint, objective or model shows the LaTeX that Pyomo's printer generates from it, so the equation on the page is the one that is
+solved. The researcher can download the notebook as Markdown or as a marimo notebook (`marimo edit <file>`).
+
 ### Files and the agents' own analysis
 
 Agents other than the protected implementation roles can read two places outside the database:

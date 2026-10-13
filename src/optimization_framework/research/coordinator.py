@@ -13,7 +13,7 @@ from optimization_framework.research.providers import api_spend, provider_status
 # These researcher-interface controls are not scientific action proposals.
 # Explicitly scoped callers can still supply their schemas when needed.
 INTERFACE_COMMANDS = {"campaign.create", "context.import", "context.edit", "models.configure", "issue.resolve",
-    "decision.resolve", "decision.refresh", "research.control", "research.retry", "finalist.set", "implementation.reference", "implementation.bind_builtin"}
+    "decision.resolve", "decision.refresh", "research.control", "research.retry", "finalist.set", "implementation.reference", "implementation.bind_builtin", "formulation.edit"}
 
 
 class ResearchCancelled(Exception):

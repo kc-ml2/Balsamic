@@ -135,6 +135,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     install_problem_import(app, workspace)
     from optimization_framework.api.reports import install as install_reports
     install_reports(app, workspace)
+    from optimization_framework.formulation.api import install as install_formulation
+    install_formulation(app, workspace)
 
     @app.get("/api/campaigns/{campaign_id}/discovery")
     def discovery(campaign_id: str):
@@ -496,6 +498,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
             response["manager_issues"] = [{**issue, "revision": issue.get("revision", issue.get("occurrences", 1))}
                 for issue in workspace.store.list("manager_issue", current)]
             response["manager_commands"] = workspace.store.list("manager_command", current)
+            # The notebook's body has its own route; the state says only that it changed.
+            response["formulation"] = workspace.formulation.summary(current)
             from optimization_framework.implementations.bridge import public_grant
             response["implementation_jobs"] = [public_grant(g) for g in workspace.store.list("implementation_grant", current)]
             from optimization_framework.api.reports import public_job

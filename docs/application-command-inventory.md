@@ -65,6 +65,10 @@ a changed campaign revision cannot silently turn an uncertain retry into a secon
 accepted update. Campaign forms keep the charter revision they opened with, and
 context edits retain the revision the researcher actually edited.
 
+`formulation.edit` has no earlier route. It carries the researcher's batch of changes to the campaign's
+[formulation notebook](formulation-notebook.md); each update or delete names the cell revision that was read.
+It is not delegable: agents change the notebook through their own `notebook_edit` tool.
+
 The browser now saves the complete pending envelope in a per-workspace local
 storage journal before dispatch. Reload recovery checks the accepted receipt
 first; it offers the original request for retry only when no accepted record is

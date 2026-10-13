@@ -103,6 +103,8 @@ class Workspace:
         self.journals = JournalCompaction(self)
         from optimization_framework.campaigns.removal import CampaignRemoval
         self.removal = CampaignRemoval(self)
+        from optimization_framework.formulation.service import Formulation
+        self.formulation = Formulation(self)
         self.maintenance_thread = None
         self.on_manager_tick = None
         from optimization_framework.research.discovery.controller import DiscoveryController
@@ -130,6 +132,7 @@ class Workspace:
         recover(self)
         self.discovery.recover()
         self.removal.recover()
+        self.formulation.recover()
         from optimization_framework.assets.service_costs import reconcile_workspace
         reconcile_workspace(self)
         self.thread = threading.Thread(target=self._loop, name="experiment-supervisor", daemon=True)

@@ -26,6 +26,8 @@ dev = ["pytest>=9,<10", "jsonschema>=4.19,<5"]
 meent = ["meent==0.13.2", "scipy==1.18.1", "matplotlib>=3.10,<4", "tqdm>=4.70,<5"]
 learners = ["torch==2.14.0", "gymnasium==1.3.0"]
 masks = ["mask-optimizers==0.1.0"]
+# What the formulation notebook's code cells import: a solver, symbols and figures.
+formulation = ["scipy==1.18.1", "sympy>=1.13,<2", "matplotlib>=3.10,<4", "pyomo==6.10.1", "highspy==1.15.1"]
 
 [project.scripts]
 dqn-meent = "dqn_meent.cli:main"

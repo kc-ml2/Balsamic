@@ -22,6 +22,7 @@ from optimization_framework.contracts.manager import ContextImportInput
 from optimization_framework.contracts.commands import ComparisonReportInput, RuntimeProfileInput, EquivalenceInput, TrialContinueInput
 from optimization_framework.contracts.commands import AssetSnapshotInput
 from optimization_framework.contracts.racing import RaceCreateInput, RaceControlInput, RaceDecisionInput
+from optimization_framework.contracts.formulation import FormulationEditInput
 
 
 DELEGATED = {"discovery.assessment.save", "discovery.assessment.launch", "discovery.assessment.decide", "trial.create", "draft.save", "draft.launch", "reproduction.draft", "reproduction.compare", "study.nominate", "validation.run", "validation.require", "validation.execute", "validation.waive", "inference.run", "asset.reuse", "comparison.report", "finding.record",
@@ -123,6 +124,7 @@ class CommandService:
             "runtime.profile": RuntimeProfileInput, "evaluator.equivalence": EquivalenceInput, "trial.continue": TrialContinueInput,
             "journal.compact": JournalCompactInput, "journal.compaction_request": JournalCompactionRequestInput,
             "approval.request": ApprovalRequestInput, "workers.set": WorkerCeilingInput,
+            "formulation.edit": FormulationEditInput,
             "validation.revoke_waiver": WaiverRevocationInput,
             "asset.reuse": ReuseInput, "finding.record": FindingInput, "implementation.commission": CommissionInput,
             "asset.snapshot": AssetSnapshotInput,
@@ -765,4 +767,9 @@ class CommandService:
         if command.operation == "finding.record":
             from .findings import record
             return record(self.workspace, command, actor)
+        if command.operation == "formulation.edit":
+            if actor != "researcher":
+                raise ValueError("Agents write in the formulation notebook with notebook_edit")
+            values = FormulationEditInput(**payload)
+            return self.workspace.formulation.edit(command.campaign_id, values.operations, reason=values.reason)
         raise ValueError("Unsupported application command")

@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState } from 'react';
-import type { FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { FormEvent, SetStateAction } from 'react';
 import { api, errorText } from './api';
 import type { State, Json } from './api';
 import { useCommand } from './commands';
@@ -91,9 +91,26 @@ export function PiAgentPanel({ state, refresh, connectionError }: { state: State
   </section><DevelopmentPanel state={state} refresh={refresh} /></>;
 }
 
-export function PiConversation({state,refresh,onClose}:{state:State;refresh:()=>Promise<void>;onClose:()=>void}) {
+export type Prefill={text:string;key:number};
+/** Puts the text another view asked for into a composer, once per request. The researcher still sends it. */
+export function usePrefill(prefill:Prefill|null|undefined,done:(()=>void)|undefined,apply:(update:SetStateAction<string>)=>void) {
+  const applied=useRef(0);
+  useEffect(()=>{
+    if(!prefill||prefill.key===applied.current)return;
+    applied.current=prefill.key;   // development runs an effect twice
+    apply(current=>current.trim()?`${current.trimEnd()}\n${prefill.text}`:prefill.text);
+    done?.();
+  },[prefill?.key]);
+}
+
+export function PiConversation({state,refresh,onClose,prefill,onPrefilled}:{state:State;refresh:()=>Promise<void>;onClose:()=>void;prefill?:Prefill|null;onPrefilled?:()=>void}) {
   const command=useCommand(state.campaign);
   const [message,setMessage]=useState(''),[busy,setBusy]=useState(false),[error,setError]=useState('');
+  const composer=useRef<HTMLTextAreaElement>(null);
+  usePrefill(prefill,onPrefilled,update=>{
+    setMessage(update);
+    requestAnimationFrame(()=>{const area=composer.current;if(area){area.focus();area.setSelectionRange(area.value.length,area.value.length);}});
+  });
   const lead=state.agent_runtime?.agents.find((agent:Json)=>agent.role==='lead');
   // origin 'pi' marks every harness agent's reply, not only the lead's.
   const messages=state.messages.filter(m=>m.agent_id===lead?.id);
@@ -121,7 +138,7 @@ export function PiConversation({state,refresh,onClose}:{state:State;refresh:()=>
       {messages.map(m=><article className={`message ${m.role==='user'?'user':'assistant'}`} key={m.id}><div className="message-meta"><span>{m.role==='user'?'You':'Lead agent'}</span></div><TextContent text={m.content} /></article>)}
       <p><a href="#notebook/conversation">Earlier campaign discussions</a></p>
     </div><form className="research-composer" onSubmit={send}><label className="sr-only" htmlFor="pi-sidebar-message">Message to lead agent</label>
-      <textarea id="pi-sidebar-message" rows={3} value={message} onChange={event=>setMessage(event.target.value)} placeholder="Tell the lead agent what to do next…" />
+      <textarea id="pi-sidebar-message" ref={composer} rows={3} value={message} onChange={event=>setMessage(event.target.value)} placeholder="Tell the lead agent what to do next…" />
       <div className="composer-footer"><span>Steer current work</span><button className="send-button" disabled={busy||!message.trim()} aria-label="Send message to lead agent"><Icon name="send" size={17} /></button></div>
       <ErrorNotice text={error} /></form>
   </aside>;

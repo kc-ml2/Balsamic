@@ -27,6 +27,7 @@ to replace that outside session.
 | Lead reads files and runs its own analysis | Implemented, live, used once by a Lead |
 | Requests that apply themselves on approval | Implemented, live, used once by a Lead |
 | Lead changes code through an implementation workspace | Proposed, acceptable in dev mode only |
+| Lead and researcher write down a problem that is not yet defined, in a shared notebook | Implemented; rehearsed once on X870E, not on X670; see Part G |
 | Lead acts only on the researcher's requests; starting the team starts no work | Implemented, live, checked with a Lead; see Part G |
 
 "Live" means the running services on X670 use the code (last restarted on 13 October 2026).
@@ -459,6 +460,46 @@ open. The first of these is covered by the automated tests only.
   change above. A turn's message now also carries the short remarks the Lead makes between tool calls.
 - After each researcher message the Lead's first commands are still refused once for an outdated
   guidance revision (Part E). Not addressed.
+
+## Part G — Formulating a problem that is not yet defined (14 October 2026)
+
+A campaign on a new kind of problem (sharing one LLM token budget among a team) began with a
+statement its researcher could not complete, and the Lead's only surface for developing it was the
+conversation. The [formulation notebook](formulation-notebook.md) is the durable surface: Markdown
+cells with typeset equations and code cells, written by the Lead at the researcher's request, read
+and edited by the researcher on the **Formulation** page.
+
+What is implemented, each with tests (`tests/test_formulation.py`, `tests/test_formulation_runs.py`,
+`frontend/tests/formulation.spec.ts`):
+
+- Cells with a name, a status (proposed, agreed, open), a revision and a history. One edit entry
+  point for the researcher's `formulation.edit` command and the Lead's `notebook_edit` tool: a batch
+  is applied together or not at all, an update names the revision that was read, and a public name
+  has one defining code cell.
+- Only the researcher agrees to a cell. The Lead's change to an agreed cell needs a reason and
+  makes it proposed again. A researcher's edit changes no guidance revision and starts no turn.
+- Code cells run together in the sandbox of `analysis_run`, 90 s at most. `notebook_scratch` tries
+  code against the notebook and keeps nothing; `notebook_run` keeps each cell's output for the page.
+- `nb.show` of a Pyomo constraint, objective or model shows the equation generated from the code.
+- Export as Markdown and as a marimo notebook; campaign removal keeps the notebook as Markdown.
+
+Rehearsal on X870E, campaign `campaign_formulation-rehearsal-20261014` (a two-product bakery, stated
+incompletely on purpose), Lead on `deepseek-v4-pro`, three requests, 17 model calls, $0.11:
+
+| Request | What the Lead did |
+|---|---|
+| Start the notebook | Read the guide, then wrote 16 cells in one batch: the problem in words, sets, parameters, decisions, objective, three constraints with code, and four open questions |
+| Change a constraint the researcher had agreed to | Saw the two cells the researcher had changed, read them, and changed three cells in one batch with a reason; the agreed cell became proposed again |
+| Add a toy instance and solve it | Tried it in the scratchpad, learned that the notebook's own cells failed, reordered and fixed them, ran the notebook, and reported the answer with a hand check |
+
+Seen and corrected during it: the Lead linked cells without the `#`, which would have left the
+dashboard; the conversation now reads such a link as a link to the cell.
+
+Not exercised: a specialist reading the notebook; a Pyomo model written by a Lead (the printer and
+HiGHS were checked in the sandbox directly); a notebook near its limits; the agents' 3,600 s
+allowance running out. Not built: turning an agreed formulation into a problem that campaign
+experiments can run. The problem contracts take one flat vector of one kind and dense linear
+constraints, which a mixed-integer model does not fit.
 
 ## Not planned
 
