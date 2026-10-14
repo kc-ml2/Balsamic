@@ -44,11 +44,12 @@ test('an import uploads its material in order and its draft opens in the New cam
   await expect(page.getByText('deflects 1050 nm light to 75°')).toBeVisible();
   await expect(page.getByText('$0.0500 of $2.00')).toBeVisible();
   await page.getByRole('button', { name: 'Use in a new campaign' }).click();
-  const dialog = page.getByRole('dialog');
-  await expect(dialog.getByLabel('Campaign name')).toHaveValue('FLRL beam deflector');
-  await expect(dialog.getByLabel('Research objective')).toHaveValue(draft.objective);
-  await expect(dialog.getByLabel('Problem adapter')).toHaveValue('meent_2d_dual_polarization_deflector');
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog).not.toBeVisible();
+  const form = page.getByRole('form', { name: 'New campaign' });
+  await expect(form.getByLabel('Campaign name')).toHaveValue('FLRL beam deflector');
+  await expect(form.getByRole('radio', { name: 'An installed problem' })).toBeChecked();
+  await expect(form.getByLabel('Research objective')).toHaveValue(draft.objective);
+  await expect(form.getByLabel('Problem adapter')).toHaveValue('meent_2d_dual_polarization_deflector');
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await expect(page.getByText('Campaign created. Your workspace is ready.')).toBeVisible();
   expect(commands[0].payload.tasks[0].fidelity).toEqual({ rcwa_order_x: 10, rcwa_order_y: 5 });
 });

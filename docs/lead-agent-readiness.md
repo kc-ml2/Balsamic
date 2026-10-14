@@ -501,6 +501,40 @@ allowance running out. Not built: turning an agreed formulation into a problem t
 experiments can run. The problem contracts take one flat vector of one kind and dense linear
 constraints, which a mixed-integer model does not fit.
 
+## Part H — Starting a campaign from a description (14 October 2026)
+
+The "New campaign" dialog assumed a problem whose structure is known: it opened on the 1D grating,
+its only free text was the research objective, and a campaign needed a fully typed task, so the
+token-sharing campaign carried a placeholder quadratic. Now:
+
+- **New campaign** is a page that keeps its draft. With "Not defined yet", a campaign is created
+  from a description alone, with no task; the description is the notebook's first cell, agreed and
+  as written. **Create and review** asks the Lead, as the researcher's message, to review it.
+- The notebook has **parameters**: every number the model takes, shown as a control and read by
+  code as `P.name`. Moving a control saves the value and runs the notebook again.
+- **Documents** attached to a campaign are read by its agents with `file_read` on root `materials`.
+
+Tests: `tests/test_campaign_from_description.py`, `tests/test_formulation_parameters.py`,
+`tests/test_campaign_materials.py`, `frontend/tests/new-campaign.spec.ts`, and additions to
+`frontend/tests/formulation.spec.ts`.
+
+Rehearsal on X870E through the page, campaign "New campaign rehearsal" (six people and a bot
+sharing tokens, with a short vendor-terms document), Lead on `deepseek-v4-pro`:
+
+| Step | Seen |
+|---|---|
+| Create and review | Commands in order: create, attach the document, start the team, the review request |
+| The review | 42 s, 5 model calls, $0.04. Read the description and the document, wrote a restatement, sets, decisions, an objective it declined to invent, four constraints from the document, six parameters (five given, each quoting its source), and five open questions |
+| A toy instance through `P` | One code cell reading every number as a parameter; run in 0.03 s |
+| Moving a control | The new cap shown 0.31 to 0.44 s after Enter |
+| One more knob, asked of the Lead | The parameter appeared after 12 s, already read by the toy instance; the reply was complete after 21 s |
+| Export | `marimo check` passes and the file runs under marimo 0.25.1 with the controls as `mo.ui` elements |
+
+Seen and corrected during it: the Lead first gave ranges of 1 to 100 million with no step, which
+made the slider coarse; the slider now steps in round units by default, and the guide and the
+instructions ask for a plausible range and a step. A parameter the researcher added was filed
+under the folded list and vanished from view; the list now stays open after an addition.
+
 ## Not planned
 
 - Several parallel environments, Stable-Baselines3 PPO, and parity with MEENT 0.9.5 for the new

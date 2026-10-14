@@ -11,3 +11,21 @@
 .setup-fields legend{padding:0 6px;color:#527247;font-size:12px;font-weight:600}
 .setup-instance-actions{display:flex;justify-content:flex-end}
 @media (max-width:640px){.setup-cards{grid-template-columns:1fr}}
+.new-campaign{max-width:980px}
+.new-campaign form{display:grid;gap:16px}
+.new-campaign-section{margin:0;padding:20px 22px}
+.new-campaign-section h2{margin:0 0 12px;font-size:15px}
+.problem-description{min-height:200px;line-height:1.55}
+.path-cards{margin-bottom:10px}
+.path-card{cursor:pointer}
+.path-card-title{display:flex;align-items:center;gap:8px}
+.path-card-title input{margin:0;accent-color:var(--teal)}
+.path-card:focus-within{outline:2px solid var(--teal);outline-offset:2px}
+.new-campaign .setup-start{margin:16px 0}
+.new-campaign-limits{margin-top:6px}
+.new-campaign-limits summary{cursor:pointer;font-size:13px;color:var(--muted);margin:4px 0 12px}
+.problem-undefined{margin:0 0 16px}
+.problem-undefined p{margin:6px 0 10px}
+.new-campaign-files{list-style:none;margin:-8px 0 0;padding:0;display:grid;gap:4px}
+.new-campaign-files li{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12px;min-width:0}
+.new-campaign-files span{overflow-wrap:anywhere}

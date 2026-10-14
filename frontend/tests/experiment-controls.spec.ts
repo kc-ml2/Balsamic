@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 import { writeFile } from 'node:fs/promises';
 
 const base = process.env.EXPERIMENT_CONTROLS_TEST_URL;
@@ -20,15 +21,15 @@ test('a reloaded browser reconciles accepted and unaccepted actions with the ori
     return route.continue();
   });
   await page.goto(base!);
-  await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+  const form = await openNewCampaign(page, { from: 'sidebar', path: 'An installed problem' });
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Campaign name').fill(`Reload recovery ${Date.now()}`);
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('200');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('0');
-  await dialog.getByLabel('API spending cap (USD)').fill('0');
-  await dialog.getByLabel('Problem adapter').selectOption('bounded_continuous');
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog.getByText('Failed to fetch', { exact: true })).toBeVisible();
+  await form.getByLabel('Campaign name').fill(`Reload recovery ${Date.now()}`);
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('200');
+  await form.getByLabel('Validation reserve (seconds)').fill('0');
+  await form.getByLabel('API spending cap (USD)').fill('0');
+  await form.getByLabel('Problem adapter').selectOption('bounded_continuous');
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await expect(form.getByText('Failed to fetch', { exact: true })).toBeVisible();
   const creation = writes['campaign.create'][0];
   const state = async () => (await request.get(`${base}/api/state?campaign_id=${creation.campaign_id}`)).json();
   const identity = (await state()).workspace_id;

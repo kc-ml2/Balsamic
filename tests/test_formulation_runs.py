@@ -75,7 +75,7 @@ def test_a_run_stopped_at_its_limit_keeps_the_cells_that_finished(tmp_path, monk
     stopped = json.loads((tmp_path / 'result.json').read_text())
     assert stopped['cells']['cell_0']['stdout'] == 'done\n' and stopped['running'] == 'cell_1' and not stopped['finished']
     # The runner reads that partial result as: one cell done, one stopped by the limit, one not reached.
-    monkeypatch.setattr(runner, 'sandbox_command', lambda directory: [])
+    monkeypatch.setattr(runner, 'sandbox_command', lambda directory, read_only=(): [])
     monkeypatch.setattr(runner, 'run_sandboxed', lambda command, seconds: ({'status': 'timeout', 'seconds': seconds}, {'stdout': '', 'stderr': ''}, seconds))
     monkeypatch.setattr(Path, 'write_text', lambda self, text: len(text) if self.name == 'input.json' else Path.write_bytes(self, text.encode()))
     result = runner.execute(tmp_path, cells('a', 'b', 'c'), seconds=1)
@@ -94,7 +94,7 @@ def test_nothing_a_cell_left_behind_is_trusted(tmp_path, monkeypatch):
         'status': 'celebrating', 'stdout': 'x' * 50000, 'error': 7, 'elapsed_seconds': 'soon', 'injected': {'html': '<script>'},
         'outputs': [{'mime': 'image/png', 'file': name} for name in ('real.png', 'linked.png', 'text.png', 'big.png', '../secret.txt', 'missing.png')]
                    + [{'mime': 'text/html', 'text': '<script>alert(1)</script>'}, {'mime': 'text/plain', 'text': 'kept'}, 'nonsense']}}}))
-    monkeypatch.setattr(runner, 'sandbox_command', lambda directory: [])
+    monkeypatch.setattr(runner, 'sandbox_command', lambda directory, read_only=(): [])
     monkeypatch.setattr(runner, 'run_sandboxed', lambda command, seconds: ({'exit_code': 0}, {'stdout': '', 'stderr': ''}, .5))
     record = runner.execute(run, cells('1'))['cells']['cell_0']
     assert record == {'status': 'error', 'stdout': 'x' * kernel.OUTPUT_CHARACTERS,
@@ -109,8 +109,8 @@ def test_nothing_a_cell_left_behind_is_trusted(tmp_path, monkeypatch):
 def fake_execution(monkeypatch, results=None):
     """Runs without a sandbox: each code cell 'prints' its own source."""
     calls = []
-    def execute(directory, items, *, scratch=None, seconds=90.):
-        calls.append({'directory': Path(directory), 'cells': [item['name'] for item in items], 'scratch': scratch, 'seconds': seconds})
+    def execute(directory, items, *, scratch=None, seconds=90., parameters=None, font_list=None):
+        calls.append({'directory': Path(directory), 'cells': [item['name'] for item in items], 'scratch': scratch, 'seconds': seconds, 'parameters': parameters})
         Path(directory).mkdir(parents=True, exist_ok=True)
         (Path(directory) / 'figure_1.png').write_bytes(runner.PNG + b'picture')
         result = {'status': 'completed', 'elapsed_seconds': 2.0, 'cells': {item['id']: {'status': 'ok', 'stdout': item['source'] + '\n',
@@ -155,7 +155,7 @@ def test_one_run_at_a_time_and_a_lost_run_releases_the_notebook(notebook, monkey
     cid, formulation = campaign['id'], workspace.formulation
     formulation.edit(cid, [code('params', 'B = 4')])
     release = []
-    def held(directory, items, *, scratch=None, seconds=90.):
+    def held(directory, items, *, scratch=None, seconds=90., parameters=None, font_list=None):
         while not release:
             time.sleep(.01)
         return {'status': 'completed', 'elapsed_seconds': 1.0, 'cells': {items[0]['id']: {'status': 'ok', 'stdout': '', 'outputs': []}}}
@@ -261,6 +261,20 @@ def test_cells_run_in_the_sandbox_with_the_solver_and_without_the_host(notebook)
     tried = formulation.scratch(cid, 'float(value @ np.array(chosen))')
     assert tried['outputs'] == [{'mime': 'text/plain', 'text': '9.0'}] and formulation.view(cid)['latest_run']['id'] == run['id']
     assert not list((workspace.directory / 'campaigns' / cid / 'formulation' / 'scratch').iterdir())
+    # A parameter reaches the sandbox as P, and a run that draws reads the font list the server built, read-only.
+    formulation.edit(cid, [{'op': 'parameter.declare', 'name': 'B', 'label': 'Budget', 'kind': 'number', 'value': 5.0, 'minimum': 0, 'maximum': 10},
+                           {'op': 'update', 'cell': 'data', 'expected_revision': 1, 'source': 'import numpy as np\nfrom scipy.optimize import milp, '
+                            'LinearConstraint, Bounds\nvalue = np.array([5.0, 4.0, 3.0])\ncost = np.array([2.0, 3.0, 1.0])\nB = P.B'},
+                           code('figure', 'import os as _os, matplotlib.pyplot as plt\nplt.bar(range(3), chosen)\n'
+                                          'open(_os.path.expanduser("~/.cache/matplotlib/probe"), "w").close()\n'
+                                          'try:\n    open("/opt/matplotlib-fonts/probe", "w")\nexcept OSError as error:\n    print("font list read-only:", type(error).__name__)')])
+    formulation.set_values(cid, {'B': 3.0})
+    drawn = formulation.run(cid)
+    outcome = {cell['name']: cell.get('output') for cell in formulation.view(cid)['cells']}
+    assert drawn['status'] == 'completed' and drawn['parameters'] == {'B': 3.0}, drawn
+    assert outcome['solve']['outputs'][-1] == {'mime': 'text/plain', 'text': '[1, 0, 1]'}
+    assert outcome['figure']['outputs'][0]['mime'] == 'image/png' and 'Fontconfig' not in outcome['figure']['stdout']
+    assert 'font list read-only: OSError' in outcome['figure']['stdout']
     # A cell that never ends is stopped at the limit; the cells before it keep their output.
     formulation.edit(cid, [code('endless', 'while True:\n    pass', after='data')])
     monkeypatched = service.RUN_SECONDS
@@ -271,7 +285,7 @@ def test_cells_run_in_the_sandbox_with_the_solver_and_without_the_host(notebook)
         service.RUN_SECONDS = monkeypatched
     assert stopped['status'] == 'timeout'
     statuses = {cell['name']: cell['output']['status'] for cell in formulation.view(cid)['cells'] if cell['kind'] == 'code'}
-    assert statuses == {'data': 'ok', 'endless': 'timeout', 'solve': 'not_run', 'host': 'not_run'}
+    assert statuses == {'data': 'ok', 'endless': 'timeout', 'solve': 'not_run', 'host': 'not_run', 'figure': 'not_run'}
 
 
 def test_a_pyomo_component_is_shown_as_the_equation_generated_from_it(tmp_path):

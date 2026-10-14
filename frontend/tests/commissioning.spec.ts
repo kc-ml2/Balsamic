@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 test('contract-only evaluator use requires a study waiver and cannot become confirmation', async ({ page, request }, info) => {
@@ -138,25 +139,25 @@ test('commissioned optimizer and evaluator preserve the draft, binding, and upst
   const optimizerPackage = { contract: 'optimizer_v1', entrypoint: 'optimizer:create_optimizer', files: [
     { path: 'optimizer.py', content: readFileSync('../examples/implementation-reference/continuous_optimizer_v1.py', 'utf8') }] };
   await page.goto(`${base}/#problem`);
-  await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+  const form = await openNewCampaign(page, { from: 'sidebar', path: 'Declare it myself' });
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Campaign name').fill(`Executable commissioning ${Date.now()}`);
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('120');
-  await dialog.getByLabel('Implementation compute cap (seconds)', { exact: true }).fill('120');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('0');
-  await dialog.getByLabel('API spending cap (USD)').fill('0');
-  await dialog.getByLabel('Configuration 1', { exact: true }).fill('Independent quadratic');
-  await dialog.getByLabel('Problem adapter').selectOption('__commission__');
-  await dialog.getByText('Advanced declaration: configuration, fidelity, constraints and metrics', { exact: true }).click();
-  await dialog.getByLabel('Problem manifest JSON').fill(JSON.stringify(manifest));
-  await dialog.getByRole('button', { name: 'Apply declaration', exact: true }).click();
-  await expect(dialog.getByLabel('Objective name', { exact: true })).toHaveValue('energy');
+  await form.getByLabel('Campaign name').fill(`Executable commissioning ${Date.now()}`);
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('120');
+  await form.getByLabel('Implementation compute cap (seconds)', { exact: true }).fill('120');
+  await form.getByLabel('Validation reserve (seconds)').fill('0');
+  await form.getByLabel('API spending cap (USD)').fill('0');
+  await form.getByLabel('Configuration 1', { exact: true }).fill('Independent quadratic');
+  await form.getByLabel('Problem adapter').selectOption('__commission__');
+  await form.getByText('Advanced declaration: configuration, fidelity, constraints and metrics', { exact: true }).click();
+  await form.getByLabel('Problem manifest JSON').fill(JSON.stringify(manifest));
+  await form.getByRole('button', { name: 'Apply declaration', exact: true }).click();
+  await expect(form.getByLabel('Objective name', { exact: true })).toHaveValue('energy');
   const created = page.waitForResponse(response => response.url().endsWith('/api/v1/commands') && response.request().method() === 'POST'
     && response.request().postDataJSON()?.operation === 'campaign.create');
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
   const campaign = (await (await created).json()).outcome.campaign;
   expect(campaign.id).toBeTruthy();
-  await expect(dialog).not.toBeVisible();
+  await expect(form).not.toBeVisible();
   const state = async () => (await request.get(`${base}/api/v1/state?campaign_id=${campaign.id}`)).json();
   const original = await state();
   const task = original.tasks[0], study = original.studies.find((item: any) => item.id === campaign.active_study_id);

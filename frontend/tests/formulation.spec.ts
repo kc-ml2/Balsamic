@@ -25,6 +25,7 @@ async function open(page: Page, lab: ReturnType<typeof workspace>, answer: (body
   });
   await page.route('**/api/**', async route => {
     const request = route.request(), path = new URL(request.url()).pathname;
+    if (request.method() === 'PUT') { const body = request.postDataJSON(); lab.commands.push({ put: path, body }); return route.fulfill(await answer(body, path) || { json: { outcome: {}, run: null, queued: false, notebook: lab.notebook } }); }
     if (request.method() === 'POST') { const body = request.postDataJSON(); lab.commands.push(path.endsWith('/runs') ? { run: path } : body); return route.fulfill(await answer(body, path) || { json: { status: 'completed', outcome: {} } }); }
     if (path.endsWith('.png')) return route.fulfill({ contentType: 'image/png', body: pixel });
     if (path.endsWith('/history')) return route.fulfill({ json: { revisions: [cell('budget', 'Spend at most $B$.'), cell('budget', 'Spend at most $B$ a month.', { revision: 2, author: 'researcher', reason: '' })] } });
@@ -216,4 +217,70 @@ test('a link to a cell opens the notebook at that cell', async ({ page }) => {
   const target = page.getByRole('article', { name: 'Cell c_27', exact: true });
   await expect(target).toBeInViewport();
   await expect(target).toBeFocused();
+});
+
+test('parameters are controls: a move saves the value and runs the notebook, and the outputs come back in place', async ({ page }) => {
+  const output = (text: string, run: string) => ({ status: 'ok', stdout: text, outputs: [], run_id: run, stale: false, elapsed_seconds: .2 });
+  const lab = workspace([cell('cap_code', 'cap = P.B / P.seats / 30', { kind: 'code', output: output('cap 11111\n', 'frun_1') })]);
+  const parameter = (more: Record<string, unknown>) => ({ revision: 1, value_author: 'researcher', used_by: ['cap_code'], ...more });
+  (lab.notebook as any).parameters = [
+    parameter({ id: 'p1', name: 'B', label: 'Monthly allocation', kind: 'number', value: 4_000_000, minimum: 0, maximum: 10_000_000, step: 100_000, unit: 'tokens',
+      symbol: 'B', basis: 'given', prominent: true, description: 'Tokens the team may use in a month.' }),
+    parameter({ id: 'p2', name: 'seats', label: 'Seats', kind: 'integer', value: 12, minimum: 1, basis: 'given', prominent: true }),
+    parameter({ id: 'p3', name: 'carry', label: 'Carry over unused tokens', kind: 'boolean', value: false, basis: 'assumed', value_author: 'lead', used_by: [] }),
+    parameter({ id: 'p4', name: 'policy', label: 'Policy', kind: 'choice', value: 'fair', choices: ['fair', 'greedy'], basis: 'to_measure' }),
+  ];
+  const puts = () => lab.commands.filter(entry => entry.put);
+  await open(page, lab, (body, path) => {
+    if (!path.endsWith('/values')) return undefined;
+    const held = (lab.notebook as any).parameters;
+    for (const [name, value] of Object.entries(body.values)) Object.assign(held.find((item: any) => item.name === name), { value, value_author: 'researcher', revision: 2 });
+    const B = held[0].value, seats = held[1].value;
+    lab.notebook.cells[0].output = output(`cap ${Math.round(B / seats / 30)}\n`, `frun_${puts().length + 1}`);
+    return { json: { outcome: {}, run: body.run ? { status: 'completed', elapsed_seconds: .3 } : null, queued: false, notebook: lab.notebook } };
+  });
+  const panel = page.getByRole('region', { name: 'Parameters' });
+  await expect(panel).toContainText('2 given · 1 assumed · 1 to be measured · 1 not used yet');
+  // What matters most comes first; the rest is folded.
+  await expect(panel.getByLabel('Monthly allocation (tokens)', { exact: true })).toHaveValue('4000000');
+  await expect(panel.getByLabel('Policy', { exact: true })).toBeHidden();
+  await expect(panel.getByText('2 more parameters')).toBeVisible();
+  await expect(panel.locator('.knob-symbol .katex')).toHaveCount(1);
+  // A slider moved by one step is one request, and the cell's output changes where it is.
+  await panel.getByLabel('Monthly allocation (tokens), slider').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => puts().length).toBe(1);
+  expect(puts()[0]).toEqual({ put: '/api/campaigns/token-sharing/formulation/values', body: { values: { B: 4_100_000 }, run: true, wait: 3 } });
+  await expect(page.getByRole('article', { name: 'Cell cap_code' })).toContainText('cap 11389');
+  await expect(panel.getByRole('status')).toContainText('Saved and ran in 0.3 s');
+  // A typed number is sent when it is entered.
+  await panel.getByLabel('Seats', { exact: true }).fill('10');
+  await panel.getByLabel('Seats', { exact: true }).press('Enter');
+  await expect.poll(() => puts().length).toBe(2);
+  expect(puts()[1].body.values).toEqual({ seats: 10 });
+  await expect(page.getByRole('article', { name: 'Cell cap_code' })).toContainText('cap 13667');
+  // A value the lead agent set is marked until the researcher confirms it; confirming does not run the notebook.
+  await panel.getByText('2 more parameters').click();
+  await expect(panel.getByText('set by the lead agent')).toBeVisible();
+  await expect(panel.getByText('not used by any cell yet')).toBeVisible();
+  await panel.getByRole('button', { name: 'Confirm' }).click();
+  await expect.poll(() => puts().length).toBe(3);
+  expect(puts()[2].body).toEqual({ values: { carry: false }, run: false, wait: 3 });
+  await expect(panel.getByText('set by the lead agent')).toHaveCount(0);
+  // The researcher adds a parameter without the agent.
+  await panel.getByRole('button', { name: 'Add a parameter' }).click();
+  const form = page.getByRole('form', { name: 'New parameter' });
+  await form.getByLabel('Name in code').fill('absence');
+  await form.getByLabel('Label').fill('Share of people absent on a day');
+  await form.getByLabel('Value').fill('0.1');
+  await form.getByLabel('Minimum').fill('0');
+  await form.getByLabel('Maximum').fill('1');
+  await form.getByLabel('Source').selectOption('assumed');
+  await form.getByRole('button', { name: 'Add' }).click();
+  await expect.poll(() => lab.commands.filter(entry => entry.operation === 'formulation.edit').length).toBe(1);
+  const declared = lab.commands.find(entry => entry.operation === 'formulation.edit');
+  expect(declared.payload).toEqual({ operations: [{ op: 'parameter.declare', name: 'absence', label: 'Share of people absent on a day', kind: 'number',
+    basis: 'assumed', prominent: false, minimum: 0, maximum: 1, value: 0.1 }], reason: 'Added a parameter' });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

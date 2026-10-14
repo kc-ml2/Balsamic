@@ -10,6 +10,7 @@ import contextlib
 import json
 import linecache
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -18,6 +19,8 @@ import traceback
 OUTPUT_CHARACTERS = 12000
 OUTPUTS_PER_CELL = 8
 FIGURE_BYTES = 1_000_000
+# Where a run finds the font list the server built (mounted read-only), so that matplotlib does not rebuild it.
+FONT_LIST = "/opt/matplotlib-fonts"
 
 
 def _markdown_table(rows, headers=None):
@@ -171,20 +174,73 @@ def run_cell(name, source, namespace, notebook):
     return record
 
 
+class Parameters:
+    """The notebook's parameters, as cells read them: P.B or P["B"]. Cells cannot change them; the controls on the page do."""
+    __slots__ = ("_values",)
+
+    def __init__(self, values):
+        object.__setattr__(self, "_values", dict(values))
+
+    def __getattr__(self, name):
+        try:
+            return self._values[name]
+        except KeyError:
+            raise AttributeError(f"There is no parameter {name}; the parameters are {', '.join(self._values) or 'none yet'}") from None
+
+    def __getitem__(self, name):
+        try:
+            return self._values[name]
+        except KeyError:
+            raise KeyError(f"There is no parameter {name}") from None
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
+
+    def __contains__(self, name):
+        return name in self._values
+
+    def __setattr__(self, name, value):
+        raise AttributeError("Parameters are set with the controls on the Formulation page, not by a cell")
+
+    __delattr__ = __setattr__
+
+    def __setitem__(self, name, value):
+        raise TypeError("Parameters are set with the controls on the Formulation page, not by a cell")
+
+    def __repr__(self):
+        return "P(" + ", ".join(f"{name}={value!r}" for name, value in self._values.items()) + ")"
+
+
 def save(result):
     with open("result.json.partial", "w") as stream:
         json.dump(result, stream)
     os.replace("result.json.partial", "result.json")
 
 
+def fonts():
+    """Start from the font list the server built, so that matplotlib does not search the fonts again in every run."""
+    if os.path.isdir(FONT_LIST):
+        target = os.path.join(os.path.expanduser("~"), ".cache", "matplotlib")
+        os.makedirs(target, exist_ok=True)
+        for name in os.listdir(FONT_LIST):
+            if name.startswith("fontlist-") and name.endswith(".json"):
+                shutil.copyfile(os.path.join(FONT_LIST, name), os.path.join(target, name))
+
+
 def main():
     import resource
     resource.setrlimit(resource.RLIMIT_FSIZE, (64 << 20, 64 << 20))
     resource.setrlimit(resource.RLIMIT_NOFILE, (256, 256))
+    fonts()
     with open("input.json") as stream:
         request = json.load(stream)
     notebook = Notebook()
     namespace = {"__name__": "__notebook__", "nb": notebook}
+    if request.get("parameters") is not None:
+        namespace["P"] = Parameters(request["parameters"])
     result = {"cells": {}, "running": None, "finished": False}
     failed = None
     for cell in request["cells"]:

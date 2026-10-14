@@ -359,7 +359,7 @@ class Workspace:
                     pass
                 else:
                     raise ValueError("A record already owns this campaign identity")
-            data = request.model_dump(exclude={"tasks"})
+            data = request.model_dump(exclude={"tasks", "description"})
             campaign = dict(data, id=campaign_id or identifier("campaign"), version=1, created_at=now(), updated_at=now())
             self.store.put("campaign", campaign, "campaign.created")
             self._add_tasks(campaign, request.tasks)
@@ -374,6 +374,10 @@ class Workspace:
             campaign["active_study_id"] = study.id
             campaign["schema_version"] = 1
             self.store.put("campaign", campaign)
+            if request.description.strip():
+                # The researcher's description opens the formulation notebook, where the problem is worked out.
+                from optimization_framework.formulation.template import seed
+                self.formulation.edit(campaign["id"], seed(request.description), reason="The researcher's description")
             return campaign
 
     def _add_tasks(self, campaign, tasks):

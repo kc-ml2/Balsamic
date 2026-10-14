@@ -69,6 +69,25 @@ Codex may retry transport connections internally within that overall timeout. Th
 
 Paid API usage uses configured price estimates, not invoice reconciliation. A finite API dollar cap requires known prices. Reservations are written before provider execution, and uncertain interrupted calls remain inspectable. Malformed responses are recorded and are not automatically retried. Subscription and API transports share structured role results while retaining their distinct accounting.
 
+## Starting a campaign
+
+**New campaign** opens a page, not a dialog, and keeps what you type there until the campaign is created. Describe the problem in
+your own words, attach documents if you have them, and say how the problem is defined:
+
+- **Not defined yet.** The campaign is created with no problem, and your description becomes the first cell of its
+  [formulation notebook](formulation-notebook.md), as you wrote it. **Create and review** then asks the lead agent, as your
+  message, to review the description: it restates the problem, writes what the description supports, declares the numbers as
+  parameters you can move, and puts what it cannot assume into open questions. Without a model for a lead agent only the campaign
+  is created, and the Formulation page offers the review once one is chosen. Experiments, methods and probes need a problem: attach
+  one with **Attach a problem** on the Problem workbench when the formulation is ready.
+- **An installed problem.** Choose a problem this server can evaluate, or one of its examples, and configure it.
+- **Declare it myself.** Say what a candidate is and how it is scored; an evaluator is built after the campaign exists.
+
+Documents are attached after the campaign is created and before the review is asked for. Their text is extracted on this machine;
+the campaign's agents read it (and send it to their model provider) when they need it. If one is refused, nothing is asked of the lead
+agent until you try again or go on without it. **Draft one from documents** opens the problem importer instead, which drafts a runnable
+setup from a paper.
+
 ## A practical first campaign
 
 1. **Create the charter.** State the research objective, numerical compute cap, optional API spending cap, validation reserve, and autonomy preference. Add development configurations and, when appropriate, selection and test configurations. Each configuration produces a separate binary grating.
@@ -158,7 +177,8 @@ The current evaluator exposes `binary_forward`. Continuous designs, RCWA gradien
 
 ## Formulate the problem with the lead agent
 
-When the problem itself is not yet defined, write it down in **Formulation**. The page holds a notebook of text cells with equations and code cells, which the lead agent writes at your request and you read beside the conversation. You agree to a cell, edit it, look at its history, or start a message about it with Discuss. Saving an edit starts no agent; write in the conversation for that. **Run all** runs the code cells in a sandbox and shows what each produced; the notebook downloads as Markdown or as a marimo notebook. The [formulation notebook guide](formulation-notebook.md) describes the page, the statuses of a cell and how a formulation is laid out.
+When the problem itself is not yet defined, write it down in **Formulation**. Its parameters are controls: move one and the notebook
+runs again, so the toy instance shows what that number changes. The page holds a notebook of text cells with equations and code cells, which the lead agent writes at your request and you read beside the conversation. You agree to a cell, edit it, look at its history, or start a message about it with Discuss. Saving an edit starts no agent; write in the conversation for that. **Run all** runs the code cells in a sandbox and shows what each produced; the notebook downloads as Markdown or as a marimo notebook. The [formulation notebook guide](formulation-notebook.md) describes the page, the statuses of a cell and how a formulation is laid out.
 
 ## Campaign manager and durable context
 

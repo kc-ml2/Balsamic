@@ -1,8 +1,29 @@
-"""Routes of the formulation notebook: reading it and running its code. Its cells are changed through the formulation.edit command."""
+"""Routes of the formulation notebook: reading it, running its code, and the values of its parameters.
+
+Its cells and the description of its parameters change through the formulation.edit command. A
+parameter's value changes here instead: the researcher moves a control many times a minute, and each
+move is a new value, not a decision worth a command record.
+"""
 from fastapi import HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
+from pydantic import BaseModel, ConfigDict, Field
+
+from optimization_framework.contracts.formulation import PARAMETERS, Value
 
 from .service import Refusal
+
+WAIT_SECONDS = 10.
+
+
+class Values(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    values: dict[str, Value] = Field(min_length=1, max_length=PARAMETERS)
+    run: bool = True
+    wait: float = Field(default=3., ge=0, le=WAIT_SECONDS)
+
+
+def _brief(run):
+    return run and {key: run.get(key) for key in ("id", "status", "started_at", "finished_at", "seconds", "elapsed_seconds", "notebook_revision")}
 
 
 def install(app, workspace):
@@ -23,10 +44,19 @@ def install(app, workspace):
         return {"revisions": notebook.history(campaign_id, cell_id)}
 
     @app.post("/api/campaigns/{campaign_id}/formulation/runs")
-    def run(campaign_id: str):
-        # The run continues in the background; the page reads the notebook again while it is active.
-        started = notebook.run(campaign_id, background=True)
-        return {key: started[key] for key in ("id", "status", "started_at", "seconds", "notebook_revision")}
+    def run(campaign_id: str, wait: float = 0.):
+        # The run continues in the background; a short one is answered finished, otherwise the page reads the notebook again while it is active.
+        return _brief(notebook.run(campaign_id, background=True, wait=min(max(wait, 0.), WAIT_SECONDS)))
+
+    @app.put("/api/campaigns/{campaign_id}/formulation/values")
+    def set_values(campaign_id: str, request: Values):
+        """The researcher's controls: save the values, then run the notebook, or once more after the run in progress."""
+        outcome = notebook.set_values(campaign_id, request.values)
+        started, queued = None, False
+        if request.run and any(cell["kind"] == "code" for cell in notebook.view(campaign_id)["cells"]):
+            started = notebook.run(campaign_id, background=True, wait=request.wait, queue=True)
+            queued = started is None
+        return {"outcome": outcome, "run": _brief(started), "queued": queued, "notebook": notebook.view(campaign_id)}
 
     @app.get("/api/campaigns/{campaign_id}/formulation/runs/{run_id}/files/{name}")
     def figure(campaign_id: str, run_id: str, name: str):

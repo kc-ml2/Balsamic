@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 test('commissioned evaluator recipes work through study, diagnostic, and validation controls', async ({ page, request }, info) => {
@@ -17,27 +18,27 @@ test('commissioned evaluator recipes work through study, diagnostic, and validat
       properties: { digits: { type: 'integer', minimum: 0, maximum: 12 } } }, fidelity: { digits: 8 },
     recipe_ids: ['unavailable_analysis:v1'], deterministic: true };
   await page.goto(`${base}/#problem`);
-  await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+  const form = await openNewCampaign(page, { from: 'sidebar', path: 'Declare it myself' });
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Campaign name').fill(`Generated recipe qualification ${Date.now()}`);
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('120');
-  await dialog.getByLabel('Implementation compute cap (seconds)', { exact: true }).fill('60');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('0');
-  await dialog.getByLabel('API spending cap (USD)').fill('0');
-  await dialog.getByLabel('Configuration 1', { exact: true }).fill('Declared quadratic');
-  await dialog.getByLabel('Problem adapter').selectOption('__commission__');
-  await dialog.getByText('Advanced declaration: configuration, fidelity, constraints and metrics', { exact: true }).click();
-  await dialog.getByLabel('Problem manifest JSON').fill(JSON.stringify(manifest));
-  await dialog.getByRole('button', { name: 'Apply declaration', exact: true }).click();
-  await expect(dialog.getByLabel('Objective name', { exact: true })).toHaveValue('energy');
-  await dialog.getByLabel('Reevaluate observed candidates', { exact: true }).check();
-  await dialog.getByLabel('Compare declared fidelities', { exact: true }).check();
+  await form.getByLabel('Campaign name').fill(`Generated recipe qualification ${Date.now()}`);
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('120');
+  await form.getByLabel('Implementation compute cap (seconds)', { exact: true }).fill('60');
+  await form.getByLabel('Validation reserve (seconds)').fill('0');
+  await form.getByLabel('API spending cap (USD)').fill('0');
+  await form.getByLabel('Configuration 1', { exact: true }).fill('Declared quadratic');
+  await form.getByLabel('Problem adapter').selectOption('__commission__');
+  await form.getByText('Advanced declaration: configuration, fidelity, constraints and metrics', { exact: true }).click();
+  await form.getByLabel('Problem manifest JSON').fill(JSON.stringify(manifest));
+  await form.getByRole('button', { name: 'Apply declaration', exact: true }).click();
+  await expect(form.getByLabel('Objective name', { exact: true })).toHaveValue('energy');
+  await form.getByLabel('Reevaluate observed candidates', { exact: true }).check();
+  await form.getByLabel('Compare declared fidelities', { exact: true }).check();
   const created = page.waitForResponse(response => response.url().endsWith('/api/v1/commands') && response.request().method() === 'POST'
     && response.request().postDataJSON()?.operation === 'campaign.create');
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
   const campaign = (await (await created).json()).outcome.campaign;
   expect(campaign.id).toBeTruthy();
-  await expect(dialog).not.toBeVisible();
+  await expect(form).not.toBeVisible();
   const state = async () => (await request.get(`${base}/api/v1/state?campaign_id=${campaign.id}`)).json();
   expect((await state()).tasks[0].evaluator_manifest.recipe_ids).toEqual([
     'unavailable_analysis:v1', 'candidate_reevaluation:v1', 'fidelity_comparison:v1']);

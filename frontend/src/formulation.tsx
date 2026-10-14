@@ -2,6 +2,11 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { api, errorText, when } from './api';
 import type { Json, State } from './api';
 import { useCommand } from './commands';
+import { startReview } from './review';
+import { ParametersPanel } from './knobs';
+import type { Parameter } from './knobs';
+import { MaterialsPanel } from './materials';
+import type { FailedUpload } from './materials';
 import { TextContent } from './textContent';
 import { Badge, Empty, ErrorNotice, Icon, Modal } from './ui';
 import './formulation.css';
@@ -16,7 +21,7 @@ type Cell = {
   revision: number; notebook_revision: number; author: string; reason?: string; updated_at: string; agreed_revision?: number | null; output?: Output;
 };
 type Run = { id: string; status: string; requested_by: string; started_at: string; elapsed_seconds?: number; stderr?: string };
-type Notebook = { notebook: Json | null; cells: Cell[]; outline: Json[]; active_run: Run | null; latest_run: Run | null; limits: { cells: number; source_characters: number; run_seconds: number } };
+type Notebook = { notebook: Json | null; cells: Cell[]; parameters?: Parameter[]; outline: Json[]; active_run: Run | null; latest_run: Run | null; limits: { cells: number; source_characters: number; run_seconds: number } };
 // The cell being written: an existing one (`id`) or a new one placed after `after`.
 type Draft = { id?: string; after?: string; kind: Cell['kind']; name: string; source: string; revision?: number };
 type Filter = '' | Cell['status'] | 'changed';
@@ -26,6 +31,22 @@ const statusText: Record<Cell['status'], string> = { agreed: 'Agreed', open: 'Op
 function writer(author: string): string { return author === 'researcher' ? 'you' : author === 'lead' ? 'the lead agent' : author.replaceAll('_', ' '); }
 function seenKey(campaignId: string): string { return `formulation.seen:${campaignId}`; }
 function readSeen(campaignId: string): number { try { return Number(localStorage.getItem(seenKey(campaignId))) || 0; } catch { return 0; } }
+
+/** A campaign that started from a description: until the lead agent is asked, the page offers to ask it. */
+function ReviewCallout({ state, outline, onOutline, busy }: { state: State; outline: Json[]; onOutline: () => void; busy: boolean }) {
+  const [sending, setSending] = useState(false), [noModel, setNoModel] = useState(false), [failure, setFailure] = useState('');
+  const runtime = state.agent_runtime, unavailable = noModel || (!runtime?.configuration?.enabled && !runtime?.lead_model);
+  async function ask() {
+    setSending(true); setFailure('');
+    try { setNoModel(await startReview(state.workspace_id, state.campaign!) === 'no_model'); }
+    catch (e) { setFailure(errorText(e)); } finally { setSending(false); }
+  }
+  return <div className="callout formulation-review" role="note"><strong>Your description is cell <code>problem</code>.</strong> Ask the lead agent to review it: it restates the problem, writes down what your description supports, and asks about the rest as open cells.
+    {unavailable && <p>No model is available for a lead agent on this server. <a href="#models">Choose one in Models</a>, then ask for the review here.</p>}
+    <ErrorNotice text={failure} />
+    <div className="inline-actions"><button type="button" className="button small primary" disabled={sending || unavailable} onClick={() => void ask()}>{sending ? 'Asking…' : 'Ask the lead agent to review it'}</button>
+      {outline.length > 0 && <button type="button" className="button small secondary" disabled={busy} onClick={onOutline}>Add the standard outline</button>}</div></div>;
+}
 
 // The page re-renders on every workspace update; a cell is typeset again only when its text changed.
 const CellBody = memo(function CellBody({ cell, showCode }: { cell: Cell; showCode: boolean }) {
@@ -78,7 +99,8 @@ function History({ campaignId, cell, onClose, onRestore }: { campaignId: string;
 }
 
 /** The campaign's formulation notebook: what the researcher and the lead agent have written down about the problem so far. */
-export function FormulationView({ state, discuss }: { state: State; discuss: (text: string) => void }) {
+export function FormulationView({ state, discuss, failedUploads = [], onFailedUploads = () => undefined }: { state: State; discuss: (text: string) => void;
+  failedUploads?: FailedUpload[]; onFailedUploads?: (items: FailedUpload[]) => void }) {
   const campaign = state.campaign, command = useCommand(campaign);
   const [view, setView] = useState<Notebook | null>(null), [error, setError] = useState(''), [loadError, setLoadError] = useState(''), [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null), [filter, setFilter] = useState<Filter>(''), [showCode, setShowCode] = useState(false);
@@ -139,6 +161,10 @@ export function FormulationView({ state, discuss }: { state: State; discuss: (te
   const tooLong = !!draft && draft.source.length > (view?.limits.source_characters ?? 32768);
   const hasCode = cells.some(cell => cell.kind === 'code'), outOfDate = cells.some(cell => cell.output?.stale), last = view?.latest_run;
   const unfinished = last && ['failed', 'interrupted'].includes(last.status);
+  // Started from a description and not yet reviewed: the description is the researcher's, and the lead has had no request.
+  const lead = (state.agent_runtime?.agents || []).find((agent: Json) => agent.role === 'lead');
+  const reviewable = !state.tasks.length && cells.some(cell => cell.name === 'problem' && cell.author === 'researcher')
+    && !state.messages.some(message => message.role === 'user' && !!lead && message.agent_id === lead.id);
 
   const editor = draft && <form className="formulation-editor" aria-label={draft.id ? `Edit ${edited?.name}` : 'New cell'} onSubmit={e => { e.preventDefault(); void save(); }}>
     {edited && edited.revision !== draft.revision && <div className="callout amber" role="status">
@@ -167,6 +193,10 @@ export function FormulationView({ state, discuss }: { state: State; discuss: (te
           <a className="button small secondary" href={`${path}/export?format=py`} download title="The notebook as a marimo file, to open and run with marimo"><Icon name="download" size={14} />marimo notebook</a></>}</div></div>
     {question && <div className="callout amber formulation-question" role="status"><strong>The lead agent is waiting for your answer.</strong> {String(question.question).slice(0, 300)} <a href="#notebook">Answer it in the agent team panel</a></div>}
     <ErrorNotice text={error || loadError} />
+    {view && <MaterialsPanel campaignId={campaign.id} failed={failedUploads} onFailed={onFailedUploads} />}
+    {view && reviewable && <ReviewCallout state={state} outline={view.outline} busy={busy} onOutline={() => void edit(view.outline, 'Standard outline')} />}
+    {view && (cells.length > 0 || !!view.parameters?.length) && <ParametersPanel parameters={view.parameters || []} path={path} busy={busy}
+      onView={notebook => setView(notebook as Notebook)} edit={edit} />}
     {view && !cells.length && !draft && <Empty icon="sigma" title="Nothing is written down yet"
       action={<div className="inline-actions"><button className="button primary" disabled={busy} onClick={() => void edit(view.outline, 'Standard outline')}>Start from the standard outline</button>
         <button className="button secondary" onClick={() => discuss('Start the formulation notebook from the campaign objective: write down what you can already state, and what you need me to answer as open cells.')}>Ask the lead agent to start</button>

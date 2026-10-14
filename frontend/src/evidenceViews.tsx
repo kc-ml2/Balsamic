@@ -391,7 +391,8 @@ export function StudyView({ state, actions }: Props) {
     } catch (e) { setFailure(errorText(e)); } finally { setBusy(false); }
   }
   return <><div className="page-heading"><div><span className="eyebrow">Scientific scope</span><h1>Study history.</h1><p>Scientific changes create a linked study. Experiment procedures and prior evidence retain their original scope.</p></div>
-    <button className="button primary" onClick={() => { setOpen(true); setGoal(state.campaign?.objective || ''); setTaskIds(state.tasks.map(task => task.id)); setRequiredChecks([]); setCheckParameters({}); }}>Define a new study</button></div>
+    {state.tasks.length > 0 ? <button className="button primary" onClick={() => { setOpen(true); setGoal(state.campaign?.objective || ''); setTaskIds(state.tasks.map(task => task.id)); setRequiredChecks([]); setCheckParameters({}); }}>Define a new study</button>
+      : <p className="help-text">A study needs a problem. This campaign's problem is not defined yet.</p>}</div>
     <RaceProgress studyId={state.campaign?.active_study_id} state={state} actions={actions} />
     <TemplateStudies state={state} actions={actions} />
     {[...(state.studies || [])].sort((a: Json, b: Json) => Number(b.id === state.campaign?.active_study_id) - Number(a.id === state.campaign?.active_study_id))

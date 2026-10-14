@@ -263,7 +263,8 @@ class CampaignMemory:
                 study = self.store.get(campaign["active_study_id"], "study")
                 document += "\n\n## Active frozen study\n\n```json\n" + json.dumps(study, indent=2) + "\n```"
             domain = [{"task_id": item["id"], "problem": item.get("problem")} for kind, item in records if kind == "task" and not item.get("archived")]
-            document += "\n\n## Declared problems and capabilities\n\n```json\n" + json.dumps(domain, indent=2) + "\n```"
+            document += "\n\n## Declared problems and capabilities\n\n" + ("```json\n" + json.dumps(domain, indent=2) + "\n```" if domain else
+                "No problem is defined yet: it is being formulated in the campaign's formulation notebook.")
             authority = {key: campaign.get(key) for key in ("autonomy", "compute_budget_seconds", "llm_budget_usd", "implementation_compute_budget_seconds", "delegated_trial_seconds")}
             document += "\n\n## Authority and resource envelopes\n\n```json\n" + json.dumps(authority, indent=2) + "\n```"
             document += "\n\n## Pending issues and decisions\n\n" + "\n".join(f"- [{i['id']}] {i.get('message', i.get('title', ''))}" for i in issues+decisions)

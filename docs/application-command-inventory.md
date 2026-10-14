@@ -67,7 +67,14 @@ context edits retain the revision the researcher actually edited.
 
 `formulation.edit` has no earlier route. It carries the researcher's batch of changes to the campaign's
 [formulation notebook](formulation-notebook.md); each update or delete names the cell revision that was read.
-It is not delegable: agents change the notebook through their own `notebook_edit` tool.
+It is not delegable: agents change the notebook through their own `notebook_edit` tool. A parameter's value is
+not set through it: the researcher's controls send `PUT /api/campaigns/{id}/formulation/values`, which saves the
+values and runs the notebook, because a control moves many times a minute and each move is no decision to record.
+
+`campaign.create` accepts `description`, the problem in the researcher's words, and an empty `tasks` list when a
+description is given: the campaign then has no problem until a `campaign.update` attaches one, and the description
+opens its formulation notebook instead of being stored on the campaign. Documents are attached afterwards with
+`PUT /api/campaigns/{id}/materials/{name}`.
 
 The browser now saves the complete pending envelope in a per-workspace local
 storage journal before dispatch. Reload recovery checks the accepted receipt

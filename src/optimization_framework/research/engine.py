@@ -779,7 +779,9 @@ def _offline(request: dict, context: dict) -> dict:
     lines = ["Curated analysis — no LLM provider was called. Recommendations below are transparent heuristics and starting hypotheses, not generated research or measured superiority."]
     if mode == "generate":
         existing = {h.get("algorithm") for h in current}
-        cards = [h for h in (seed_hypotheses() if all(not t.get("problem") for t in context["tasks"]) else []) if h["algorithm"] not in existing and h["status"] != "baseline"]
+        # The curated strategies are the legacy grating's; a campaign without a task has no problem to seed them for.
+        legacy = context["tasks"] and all(not t.get("problem") for t in context["tasks"])
+        cards = [h for h in (seed_hypotheses() if legacy else []) if h["algorithm"] not in existing and h["status"] != "baseline"]
         lines.append("Candidate methods must fit the declared problem representation and capabilities. Each needs a falsifiable mechanism and a bounded check.")
         if not cards:
             lines.append("All curated strategies are already on the board. Add a researcher idea or configure a model for open-ended invention; no duplicate template has been presented as a new invention.")

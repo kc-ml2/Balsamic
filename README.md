@@ -165,7 +165,7 @@ Do not modify the step count to extend a completed checkpoint: that changes the 
 - `frontend/`: React/TypeScript dashboard and browser interaction tests.
 - `docs/workspace.md`: installation, research workflows, provider setup, and custom optimizer protocol.
 - `docs/optimizer-plugins.md`: how optimizer libraries are packaged, pinned and registered as plug-ins.
-- `docs/formulation-notebook.md`: the notebook in which the researcher and the lead agent write down a problem that is still being defined.
+- `docs/formulation-notebook.md`: the notebook in which the researcher and the lead agent write down a problem that is still being defined, starting from the researcher's description, with its numbers as controls.
 - `src/optimization_framework/formulation/`: that notebook's records, rules and routes.
 - `src/dqn_meent/config.py`: validated experiment configuration.
 - `physics.py`: MEENT adapter, material resolution, physical checks and bounded LRU cache.

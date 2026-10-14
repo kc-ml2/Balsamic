@@ -21,22 +21,32 @@ function Candidate({ problem, values }: { problem?: Json; values?: number[] }) {
   </tbody></table></div>;
 }
 
+/** What the problem views show while the campaign's problem is still being formulated. */
+export function ProblemNotDefined({ actions }: { actions: WorkspaceActions }) {
+  return <div className="callout problem-undefined" role="note"><strong>The problem is not defined yet.</strong>
+    <p>It is being formulated in the Formulation notebook, starting from your description. Experiments, methods and probes need a problem: attach one when the formulation is ready.</p>
+    <div className="inline-actions"><button className="button small primary" onClick={() => actions.navigate('formulation')}>Open the formulation</button>
+      <button className="button small secondary" onClick={() => actions.campaign(true)}>Attach a problem</button></div></div>;
+}
+
 export function GeneralOverview({ state, actions }: Props) {
   const active = state.trials.filter(t => activeStatuses.includes(t.status));
   return <>
     <div className="page-heading"><div><span className="eyebrow">Research campaign</span><h1>{state.campaign?.name}</h1><ReadableText text={state.campaign?.objective} preview={2} /></div>
-      <button className="button primary" onClick={() => actions.launch()}>Design an experiment</button></div>
+      {state.tasks.length ? <button className="button primary" onClick={() => actions.launch()}>Design an experiment</button>
+        : <button className="button primary" onClick={() => actions.navigate('formulation')}>Open the formulation</button>}</div>
+    {!state.tasks.length && <ProblemNotDefined actions={actions} />}
     <Panel title="Research activity"><div className="overview-activity"><p>{active.length} active experiments · {state.hypotheses.length} candidate methods</p>
       <p>{seconds(state.budget?.spent_seconds || 0)} of {seconds(state.campaign?.compute_budget_seconds)} spent</p>
       <button className="text-button" onClick={() => actions.navigate('experiments')}>Inspect experiments</button></div></Panel>
-    <Panel title="Objective by problem instance"><div className="configuration-grid">{state.tasks.map(task => {
+    {state.tasks.length > 0 && <Panel title="Objective by problem instance"><div className="configuration-grid">{state.tasks.map(task => {
       const objective = task.problem?.primary_objective;
       const measured = state.trials.filter(t => t.task_id === task.id && !t.diagnostic_grant_id && !t.recipe && best(t) !== undefined);
       const values = measured.map(t => best(t)!);
       const value = values.length ? (objective?.direction === 'minimize' ? Math.min(...values) : Math.max(...values)) : undefined;
       return <article className="configuration-card" key={task.id}><h3>{task.name}</h3><p>{objective?.direction} {objective?.name}</p>
         <strong>{objectiveValue(value, objective)}</strong><p>{objective?.units}</p><span className="help-text">Best observed value · validation evidence is separate</span></article>;
-    })}</div></Panel>
+    })}</div></Panel>}
     {(state.manager_issues || []).filter((i: Json) => i.status === 'pending').map((issue: Json) => <div className="callout amber" key={issue.id}>
       <strong>Campaign manager issue</strong><p>{issue.message}</p><button className="text-button" onClick={() => void actions.research(`Resolve issue ${issue.id}: ${issue.message}`, 'discuss')}>Discuss with manager</button></div>)}
   </>;
@@ -48,8 +58,8 @@ export function GeneralProblem({ state, actions }: Props) {
   const [history, setHistory] = useState(false);
   return <><div className="page-heading"><div><span className="eyebrow">Problem workbench</span><h1>A shared definition of success.</h1><ReadableText text={state.campaign?.objective} /></div>
     <div className="inline-actions"><button className="button secondary" onClick={() => setHistory(true)}>Revision history</button>
-      <button className="button primary" onClick={() => actions.campaign(true)}>Revise charter</button></div></div>
-    <Panel title="Problem instances"><div className="configuration-grid">{state.tasks.map(task => <article className="configuration-card" key={task.id}>
+      <button className="button primary" onClick={() => actions.campaign(true)}>{state.tasks.length ? 'Revise charter' : 'Attach a problem'}</button></div></div>
+    {!state.tasks.length ? <ProblemNotDefined actions={actions} /> : <Panel title="Problem instances"><div className="configuration-grid">{state.tasks.map(task => <article className="configuration-card" key={task.id}>
       <div className="row-between"><Badge>{task.split}</Badge><span>{task.problem?.candidate_schema.representation}</span></div><h3>{task.name}</h3>
       <p>{task.problem?.primary_objective.direction} <strong>{task.problem?.primary_objective.name}</strong> · {task.problem?.primary_objective.units}</p>
       <p>{task.problem?.candidate_schema.dimensions} dimensions · {task.problem?.candidate_schema.constraints?.length || 0} explicit constraints</p>
@@ -57,7 +67,7 @@ export function GeneralProblem({ state, actions }: Props) {
       <div className="inline-actions"><button className="button small secondary" onClick={() => setSelected(task)}>Inspect definition</button>
         {task.evaluator_manifest && !task.evaluator_version_id && <button className="button small secondary" onClick={() => setCommissioning(task)}>Build or reuse evaluator</button>}
         {task.evaluator_version_id && task.evaluator_readiness?.state !== 'ready' && <button className="button small secondary" onClick={() => actions.navigate('validation')}>Review evaluator evidence</button>}
-        <button className="button small primary" onClick={() => actions.launch(undefined, task.id)}>Design a probe</button></div></article>)}</div></Panel>
+        <button className="button small primary" onClick={() => actions.launch(undefined, task.id)}>Design a probe</button></div></article>)}</div></Panel>}
     <Panel title="Frozen study history">{(state.studies || []).map((study: Json) => <article key={study.id}><h3>{study.goal}</h3><Badge>{study.scope}</Badge>
       <p className="help-text">{study.id}{study.parent_study_id ? ` · follows ${study.parent_study_id}` : ''}</p></article>)}</Panel>
     {selected && <Modal title={selected.name} description="Resolved scientific definition, feasibility constraints, and evaluator fidelity." onClose={() => setSelected(null)}>
@@ -80,7 +90,8 @@ export function GeneralExperiments({ state, actions }: Props) {
   const trial = state.trials.find(t => t.id === selected);
   function closeDetail() { setSelected(null); history.replaceState(null, '', '#experiments'); }
   return <><div className="page-heading"><div><span className="eyebrow">Experiments</span><h1>Follow the evidence.</h1><p>Raw objectives, measured expenditure, and scientific completion remain distinct.</p></div>
-    <button className="button primary" onClick={() => actions.launch()}>Design an experiment</button></div>
+    {state.tasks.length > 0 && <button className="button primary" onClick={() => actions.launch()}>Design an experiment</button>}</div>
+    {!state.tasks.length && <ProblemNotDefined actions={actions} />}
     <Field label="Experiment study"><select value={studyId} onChange={event => setStudyId(event.target.value)}>
       <option value="all">All studies</option>{(state.studies || []).map((study: Json) => <option key={study.id} value={study.id}>{study.id === state.campaign?.active_study_id ? 'Current · ' : ''}{study.scope} · {study.id}</option>)}
     </select></Field>

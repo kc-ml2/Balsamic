@@ -8,7 +8,9 @@ import os
 from pathlib import Path
 import re
 import stat
+import subprocess
 import sys
+import threading
 
 from optimization_framework.agents.files import run_sandboxed, sandbox_command
 
@@ -20,6 +22,24 @@ TEXT = {"text/markdown", "text/latex", "text/plain"}
 PICTURE = re.compile(r"[a-z][a-z0-9_]{0,60}\.png")
 PNG = b"\x89PNG\r\n\x1a\n"
 STATUSES = {"ok", "error", "skipped"}
+
+
+_fonts_lock, _fonts_built = threading.Lock(), set()
+
+
+def fonts(directory):
+    """A matplotlib font list built by this trusted process, for runs to copy instead of rebuilding it each time
+    (about half a second of a run that draws). Built once per directory and server process; None if it cannot be."""
+    directory = Path(directory)
+    with _fonts_lock:
+        if directory not in _fonts_built:
+            directory.mkdir(parents=True, exist_ok=True)
+            built = subprocess.run([sys.executable, "-c", "import matplotlib.font_manager"], capture_output=True, timeout=120,
+                env={"PATH": "/usr/bin:/bin", "HOME": str(directory), "MPLCONFIGDIR": str(directory), "MPLBACKEND": "Agg"})
+            if built.returncode != 0 or not any(directory.glob("fontlist-*.json")):
+                return None
+            _fonts_built.add(directory)
+    return directory
 
 
 def regular_file(path, limit):
@@ -60,16 +80,18 @@ def _cell(directory, found):
     return record
 
 
-def execute(directory, cells, *, scratch=None, seconds=RUN_SECONDS):
-    """Run `cells` (id, name, source), then `scratch` if given, in `directory`.
+def execute(directory, cells, *, scratch=None, seconds=RUN_SECONDS, parameters=None, font_list=None):
+    """Run `cells` (id, name, source), then `scratch` if given, in `directory`, with `parameters` (name: value) as P.
+    `font_list` is a directory from fonts(), shown to the run read-only.
 
     Returns {"status", "cells": {id: record}, "scratch"?, "elapsed_seconds", "stderr"?}. A cell the
     time limit stopped has the status "timeout"; the cells after it, "not_run".
     """
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "input.json").write_text(json.dumps({"cells": cells, "scratch": scratch}))
-    ended, output, elapsed = run_sandboxed([*sandbox_command(directory), sys.executable, "-u", kernel.__file__], seconds)
+    (directory / "input.json").write_text(json.dumps({"cells": cells, "scratch": scratch, "parameters": parameters}))
+    shown = ((font_list, kernel.FONT_LIST),) if font_list else ()
+    ended, output, elapsed = run_sandboxed([*sandbox_command(directory, read_only=shown), sys.executable, "-u", kernel.__file__], seconds)
     found = {}
     if regular_file(directory / "result.json", RESULT_BYTES):
         try:

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 import type { Page } from '@playwright/test';
 
 const campaign = { id: 'campaign-test', name: 'Browser test campaign', objective: 'Compare optimization mechanisms under a common physical objective.', compute_budget_seconds: 600, llm_budget_usd: 5, validation_reserve_seconds: 30, autonomy: 'guided', version: 1 };
@@ -113,14 +114,14 @@ test('a new researcher can create a charter with editable configurations and exp
   await expect(page.getByRole('heading', { name: 'A better way to find the next design.' })).toBeVisible();
   await expect(page.getByText('No campaign yet')).toBeAttached();
   await page.screenshot({ path: test.info().outputPath('empty-workspace.png'), fullPage: true });
-  await page.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Campaign name').fill('My inverse design study');
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('240');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('24');
-  await dialog.getByRole('button', { name: 'Add configuration' }).click();
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog).not.toBeVisible();
+  const form = await openNewCampaign(page);
+  await form.getByLabel('Campaign name').fill('My inverse design study');
+  await form.getByRole('radio', { name: 'An installed problem' }).check();
+  await form.getByLabel('Problem adapter').selectOption('bounded_continuous');
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('240');
+  await form.getByLabel('Validation reserve (seconds)').fill('24');
+  await form.getByRole('button', { name: 'Add configuration' }).click();
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
   await expect(page.getByText('Campaign created. Your workspace is ready.')).toBeVisible();
   expect(writes[0].body).toMatchObject({ operation: 'campaign.create', expected_revision: 0 });
   expect(writes[0].body.campaign_id).toBeTruthy();
@@ -173,7 +174,7 @@ test('decisions require an explicit selection and retain researcher rationale', 
     choice: 'extend', comment: 'We need to observe the proposed mechanism before evaluating it.' } });
 });
 
-test('mobile navigation and dialog escape work without a horizontal page overflow', async ({ page }) => {
+test('mobile navigation reaches the New campaign page without a horizontal page overflow', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await mockWorkspace(page, blank);
   await page.goto('/');
@@ -182,9 +183,7 @@ test('mobile navigation and dialog escape work without a horizontal page overflo
   await expect(page.getByRole('heading', { name: 'Competing ideas. Visible reasoning.' })).toBeVisible();
   await page.getByRole('button', { name: 'Open navigation' }).click();
   await page.getByRole('button', { name: 'New campaign', exact: true }).click();
-  await expect(page.getByRole('dialog')).toBeVisible();
-  await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).not.toBeVisible();
+  await expect(page.getByRole('form', { name: 'New campaign' })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
 

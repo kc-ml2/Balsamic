@@ -287,6 +287,8 @@ class CampaignRemoval:
                 "created_at", "finished_at")} for profile in store.list("runtime_profile", campaign_id)],
             "decisions": [{key: decision.get(key) for key in ("id", "title", "status", "choice", "comment", "requested_by", "created_at", "resolved_at")}
                           for decision in store.list("decision", campaign_id)],
+            "documents": [{key: item.get(key) for key in ("name", "bytes", "pages", "added_at")}
+                          for item in store.list("campaign_material", campaign_id) if not item.get("removed")],
             "usage": {"compute_seconds": assessment.get("actual_seconds"), "compute_allocated_seconds": assessment.get("allocated_seconds"),
                       "model_calls": spending["totals"], "model_calls_by_model": spending["by_model"]}}
 
@@ -302,6 +304,11 @@ class CampaignRemoval:
             "", "## Objective", "", campaign.get("objective") or "", "", "## Problem", ""]
         for task in summary["tasks"]:
             lines.append(f"- {task['name']} (`{task['problem_id']}`), fidelity {json.dumps(task.get('fidelity'))}")
+        if not summary["tasks"]:
+            lines.append("No problem was defined. The formulation notebook, if one was written, is kept beside this file as `formulation.md`.")
+        if summary.get("documents"):
+            lines += ["", "## Documents", "", *(f"- {item['name']}" for item in summary["documents"]),
+                      "", {"summary": "Their files were deleted.", "records": "Kept beside this file, in `documents/`."}[summary["kept"]]]
         usage = summary["usage"]
         calls = usage["model_calls"]
         lines += ["", "## Cost", "",
@@ -430,6 +437,11 @@ class CampaignRemoval:
             shutil.copyfile(memory / "context.md", folder / "memory" / "context.md")
         if (memory / "records").is_dir():
             shutil.copytree(memory / "records", folder / "memory" / "records", dirs_exist_ok=True)
+        uploads = root / "campaigns" / campaign_id / "materials" / "uploads"
+        for source in sorted(uploads.glob("document-*")) if uploads.is_dir() else []:
+            if source.is_file() and not source.is_symlink():
+                (folder / "documents").mkdir(exist_ok=True)
+                shutil.copyfile(source, folder / "documents" / source.name.removeprefix("document-"))
         for identity in self._identities(campaign_id, "agent_session"):
             work = root / "agents" / identity / "work"
             for source in sorted(work.rglob("*")) if work.is_dir() else []:

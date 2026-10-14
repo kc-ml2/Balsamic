@@ -10,11 +10,11 @@ function Panel({ children, ...props }: ComponentProps<typeof BasePanel>) {
   return <BasePanel {...props}><div className="import-body">{children}</div></BasePanel>;
 }
 
-const DOCUMENTS = '.pdf,.docx,.md,.markdown,.txt,.tex,.rst,.html,.htm,.csv,.json,.yaml,.yml';
+export const DOCUMENTS = '.pdf,.docx,.md,.markdown,.txt,.tex,.rst,.html,.htm,.csv,.json,.yaml,.yml';
 const ARCHIVES = '.zip,.tar,.tar.gz,.tgz,.tar.bz2,.tar.xz';
 const base = '/api/v1/problem-imports';
 
-async function upload(path: string, file: File): Promise<Json> {
+export async function upload(path: string, file: File): Promise<Json> {
   const response = await fetch(path, { method: 'PUT', body: file, headers: { 'Content-Type': 'application/octet-stream' } });
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
@@ -30,10 +30,10 @@ const when = (value: string) => new Date(value).toLocaleString([], { month: 'sho
 /** Turn an import's draft into the shape the New campaign form applies. */
 export function draftExample(record: Json): Json {
   const draft = record.draft;
-  return { id: record.id, name: draft.title, campaign: { name: draft.title, objective: draft.objective }, instances: draft.instances };
+  return { id: record.id, name: draft.title, summary: draft.summary, campaign: { name: draft.title, objective: draft.objective }, instances: draft.instances };
 }
 
-export function ProblemImportView({ onUseDraft }: { onUseDraft: (example: Json) => void }) {
+export function ProblemImportView({ onUseDraft, notes }: { onUseDraft: (example: Json) => void; notes?: string }) {
   const [imports, setImports] = useState<Json[]>([]), [selected, setSelected] = useState<string>(() => location.hash.split('/')[1] || '');
   const [error, setError] = useState('');
   const refresh = useCallback(async () => {
@@ -47,7 +47,7 @@ export function ProblemImportView({ onUseDraft }: { onUseDraft: (example: Json) 
     <ErrorNotice text={error} />
     <div className="import-layout">
       <div className="import-column">
-        <NewImport onStarted={record => { void refresh(); open(record.id); }} />
+        <NewImport initialNotes={notes} onStarted={record => { void refresh(); open(record.id); }} />
         <Panel title="Imports">{imports.length ? <ul className="import-list">{imports.map(row => <li key={row.id}>
           <button type="button" className={selected === row.id ? 'active' : ''} aria-current={selected === row.id ? 'true' : undefined} onClick={() => open(row.id)}>
             <strong>{row.title}</strong><span><Status status={row.status} />{row.has_draft && <Badge tone="green">draft</Badge>}<small>{when(row.created_at)} · {row.model?.model}</small></span></button></li>)}</ul>
@@ -59,11 +59,11 @@ export function ProblemImportView({ onUseDraft }: { onUseDraft: (example: Json) 
   </>;
 }
 
-function NewImport({ onStarted }: { onStarted: (record: Json) => void }) {
+function NewImport({ onStarted, initialNotes = '' }: { onStarted: (record: Json) => void; initialNotes?: string }) {
   const [catalog, setCatalog] = useState<Json | null>(null), [catalogError, setCatalogError] = useState('');
   const [documents, setDocuments] = useState<File[]>([]), [codeKind, setCodeKind] = useState('none');
   const [archive, setArchive] = useState<File | null>(null), [url, setUrl] = useState(''), [ref, setRef] = useState(''), [path, setPath] = useState('');
-  const [notes, setNotes] = useState(''), [title, setTitle] = useState(''), [budget, setBudget] = useState('2');
+  const [notes, setNotes] = useState(initialNotes), [title, setTitle] = useState(''), [budget, setBudget] = useState('2');
   const [tier, setTier] = useState('');
   const [progress, setProgress] = useState(''), [error, setError] = useState(''), [busy, setBusy] = useState(false);
   useEffect(() => { api('/api/v1/model-tiers').then(result => {

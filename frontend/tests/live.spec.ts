@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 
 test('real API supports browser campaign, simultaneous baseline trials, validation, and charter history', async ({ page, request }) => {
   test.setTimeout(90000);
@@ -7,17 +8,17 @@ test('real API supports browser campaign, simultaneous baseline trials, validati
   const clientErrors: string[] = [];
   page.on('pageerror', error => clientErrors.push(error.message));
   await page.goto(baseURL!);
-  await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+  const form = await openNewCampaign(page, { from: 'sidebar', path: 'An installed problem' });
   const campaignName = `Browser integration ${Date.now()}`;
   const dialog = page.getByRole('dialog');
-  await dialog.getByLabel('Campaign name').fill(campaignName);
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('180');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('30');
-  await dialog.getByLabel('Problem adapter').selectOption('meent_grating');
-  await dialog.getByRole('button', { name: 'Edit as JSON' }).click();
-  await dialog.getByLabel('Problem configuration (JSON)').fill(JSON.stringify({ n_cells: 8, wavelength_nm: 1100, deflection_angle_deg: 50, thickness_nm: 325, material: 'constant', fourier_order: 3 }));
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog).not.toBeVisible();
+  await form.getByLabel('Campaign name').fill(campaignName);
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('180');
+  await form.getByLabel('Validation reserve (seconds)').fill('30');
+  await form.getByLabel('Problem adapter').selectOption('meent_grating');
+  await form.getByRole('button', { name: 'Edit as JSON' }).click();
+  await form.getByLabel('Problem configuration (JSON)').fill(JSON.stringify({ n_cells: 8, wavelength_nm: 1100, deflection_angle_deg: 50, thickness_nm: 325, material: 'constant', fourier_order: 3 }));
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await expect(form).not.toBeVisible();
   await expect(page.getByLabel('Active campaign')).toContainText(campaignName);
   const stateResponse = await request.get(`${baseURL}/api/state`);
   const state = await stateResponse.json();

@@ -3,6 +3,9 @@
 They are marimo's: a public name has one defining cell, and nothing is imported with a wildcard. A
 reader can then find where any value comes from, and the notebook exports as a valid marimo file.
 Names that begin with an underscore are a cell's own and are exempt.
+
+Once a notebook has parameters, `P` is theirs: code reads them as P.name or P["name"], and only
+names that are declared.
 """
 import ast
 
@@ -73,9 +76,44 @@ def definitions(source):
     return {name for name in found.names if not name.startswith("_")}
 
 
-def check(cells):
-    """Refuse code cells that break a rule. `cells` are the notebook's cells in order."""
+def reads(source):
+    """The parameters a code cell reads by name, and whether it also uses P in a way that could read any of them."""
+    names, dynamic = set(), False
+    tree = ast.parse(source)
+    named = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "P":
+            names.add(node.attr)
+            named.add(id(node.value))
+        elif (isinstance(node, ast.Subscript) and isinstance(node.value, ast.Name) and node.value.id == "P"
+              and isinstance(node.slice, ast.Constant) and isinstance(node.slice.value, str)):
+            names.add(node.slice.value)
+            named.add(id(node.value))
+    dynamic = any(isinstance(node, ast.Name) and node.id == "P" and id(node) not in named for node in ast.walk(tree))
+    return names, dynamic
+
+
+def usage(cells, names):
+    """For each parameter, the code cells that read it. A cell that uses P as a whole reads every one."""
+    found = {name: [] for name in names}
+    for cell in cells:
+        if cell["kind"] != "code":
+            continue
+        try:
+            read, dynamic = reads(cell["source"])
+        except SyntaxError:
+            continue
+        for name in found:
+            if dynamic or name in read:
+                found[name].append(cell["name"])
+    return found
+
+
+def check(cells, parameters=()):
+    """Refuse code cells that break a rule. `cells` are the notebook's cells in order; `parameters` the names declared."""
     owners = {}
+    # A notebook written before parameters existed may define P itself; it keeps that name until it declares one.
+    reserved = bool(parameters)
     for cell in cells:
         if cell["kind"] != "code":
             continue
@@ -85,6 +123,14 @@ def check(cells):
             raise ValueError(f"Cell {cell['name']} is not saved: {error}") from None
         if "nb" in names:
             raise ValueError(f"Cell {cell['name']} is not saved: nb is the notebook's own name in every cell (nb.md, nb.table, nb.show); use another name")
+        if reserved and "P" in names:
+            raise ValueError(f"Cell {cell['name']} is not saved: P holds the notebook's parameters (P.name); use another name")
+        if reserved:
+            read, _ = reads(cell["source"])
+            missing = sorted(read - set(parameters))
+            if missing:
+                raise ValueError(f"Cell {cell['name']} reads {', '.join('P.' + name for name in missing)}, which is not a parameter. "
+                                 "Declare it in the same batch, or change the cell.")
         for name in sorted(names):
             if name in owners:
                 raise ValueError(f"`{name}` is defined in both {owners[name]} and {cell['name']}. A name has one defining cell: "

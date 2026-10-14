@@ -92,29 +92,32 @@ export function retryPendingCommand(entry: PendingCommand, firstSubmission = fal
   return delivery;
 }
 
+/** Send a researcher command for `campaign`, which need not be the selected one (null to create a campaign). */
+export async function sendCommand(workspaceId: string | null | undefined, campaign: Pick<Campaign, 'id' | 'version'> | null, operation: string, payload: Json) {
+  const creating = operation === 'campaign.create';
+  if (!workspaceId) throw new Error('Refresh the workspace before submitting an action.');
+  if (!campaign && !creating) throw new Error('Select a campaign first.');
+  // Preconditions describe what was seen, not a new user intent. A refresh
+  // cannot turn an uncertain retry into another command with newer revisions.
+  const { expected_revision: _revision, expected_control_revision: _control, expected_status_revision: _status, expected_resolution_revision: _resolution, ...intent } = payload;
+  const signature = canonical({ campaign_id: creating ? null : campaign?.id, operation, payload: intent });
+  let entry = pendingCommands(workspaceId).find(item => item.signature === signature);
+  const firstSubmission = !entry;
+  if (!entry) {
+    const id = actionUUID();
+    entry = JSON.parse(JSON.stringify({ workspace_id: workspaceId, signature, created_at: new Date().toISOString(),
+      request: { id: `ui_${id}`, campaign_id: creating ? `campaign_${id}` : campaign!.id,
+        expected_revision: creating ? 0 : campaign!.version, operation, payload } }));
+    // Persist before the network request. Storage failure cannot lose the
+    // identity of an action that the server might already have accepted.
+    localStorage.setItem(key(entry!), JSON.stringify(entry));
+  }
+  const accepted = await retryPendingCommand(entry!, firstSubmission);
+  return accepted.outcome;
+}
+
 export function useCommand(campaign: Campaign | null, explicitWorkspaceId?: string | null) {
   const inheritedWorkspaceId = useContext(CommandWorkspaceContext);
   const workspaceId = explicitWorkspaceId ?? inheritedWorkspaceId;
-  return async (operation: string, payload: Json) => {
-    const creating = operation === 'campaign.create';
-    if (!workspaceId) throw new Error('Refresh the workspace before submitting an action.');
-    if (!campaign && !creating) throw new Error('Select a campaign first.');
-    // Preconditions describe what was seen, not a new user intent. A refresh
-    // cannot turn an uncertain retry into another command with newer revisions.
-    const { expected_revision: _revision, expected_control_revision: _control, expected_status_revision: _status, expected_resolution_revision: _resolution, ...intent } = payload;
-    const signature = canonical({ campaign_id: creating ? null : campaign?.id, operation, payload: intent });
-    let entry = pendingCommands(workspaceId).find(item => item.signature === signature);
-    const firstSubmission = !entry;
-    if (!entry) {
-      const id = actionUUID();
-      entry = JSON.parse(JSON.stringify({ workspace_id: workspaceId, signature, created_at: new Date().toISOString(),
-        request: { id: `ui_${id}`, campaign_id: creating ? `campaign_${id}` : campaign!.id,
-          expected_revision: creating ? 0 : campaign!.version, operation, payload } }));
-      // Persist before the network request. Storage failure cannot lose the
-      // identity of an action that the server might already have accepted.
-      localStorage.setItem(key(entry!), JSON.stringify(entry));
-    }
-    const accepted = await retryPendingCommand(entry!, firstSubmission);
-    return accepted.outcome;
-  };
+  return (operation: string, payload: Json) => sendCommand(workspaceId, campaign, operation, payload);
 }

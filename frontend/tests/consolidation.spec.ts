@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 
 test('diagnostic controls freeze a registered policy adapter and execute independent child evidence', async ({ page, request }, testInfo) => {
   const base = process.env.OPTIMIZATION_TEST_URL;
@@ -277,18 +278,18 @@ for (const domain of ['bounded_continuous', 'meent_grating']) {
     const errors: string[] = [];
     page.on('pageerror', error => errors.push(error.message));
     await page.goto(base!);
-    await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+    const form = await openNewCampaign(page, { from: 'sidebar', path: 'An installed problem' });
     const dialog = page.getByRole('dialog');
     const name = `${domain} browser qualification ${Date.now()}`;
-    await dialog.getByLabel('Campaign name').fill(name);
-    await dialog.getByLabel('Problem adapter').selectOption(domain);
-    await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('60');
-    await dialog.getByLabel('Validation reserve (seconds)').fill('0');
-    await dialog.getByRole('button', { name: 'Edit as JSON' }).click();
-    await dialog.getByLabel('Problem configuration (JSON)').fill(JSON.stringify(domain === 'meent_grating'
+    await form.getByLabel('Campaign name').fill(name);
+    await form.getByLabel('Problem adapter').selectOption(domain);
+    await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('60');
+    await form.getByLabel('Validation reserve (seconds)').fill('0');
+    await form.getByRole('button', { name: 'Edit as JSON' }).click();
+    await form.getByLabel('Problem configuration (JSON)').fill(JSON.stringify(domain === 'meent_grating'
       ? { n_cells: 4, fourier_order: 1 } : { dimensions: 2, function: 'quadratic', bounds: [[-3, 3], [-3, 3]] }));
-    await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
+    await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+    await expect(form).not.toBeVisible();
     await expect(page.getByRole('heading', { name, exact: true })).toBeVisible();
     await page.getByRole('button', { name: 'Design an experiment', exact: true }).click();
     await dialog.getByLabel('Optimization strategy').selectOption(domain === 'meent_grating' ? 'hillclimb' : 'coordinate');

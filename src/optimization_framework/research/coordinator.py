@@ -121,6 +121,9 @@ class ResearchCoordinator:
     def validate_request(self, request):
         """Validate admission without allocating a turn or executing a provider."""
         self.store.get(request.campaign_id, "campaign")
+        if request.mode in {"generate", "probe"} and not self.workspace.current_tasks(request.campaign_id):
+            raise ValueError("This campaign has no problem defined yet: formulate it in the Formulation notebook, "
+                             "then attach a problem before proposing methods or probes")
         if request.proposal_operation:
             pi_owned = self.workspace.pi.owns(request.campaign_id)
             discovery = getattr(self.workspace, "discovery", None)

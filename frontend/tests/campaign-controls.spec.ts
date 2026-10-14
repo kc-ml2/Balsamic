@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openNewCampaign } from './setupFixtures';
 import { writeFile } from 'node:fs/promises';
 
 test('campaign and context commands survive lost replies, refreshes and stale researcher edits', async ({ page, request }, info) => {
@@ -29,16 +30,16 @@ test('campaign and context commands survive lost replies, refreshes and stale re
     return route.continue();
   });
   await page.goto(base!);
-  await page.getByRole('button', { name: 'New campaign', exact: true }).click();
+  const form = await openNewCampaign(page, { from: 'sidebar', path: 'An installed problem' });
   const dialog = page.getByRole('dialog');
   const name = `Campaign controls ${Date.now()}`;
-  await dialog.getByLabel('Campaign name').fill(name);
-  await dialog.getByLabel('Compute cap (seconds)', { exact: true }).fill('200');
-  await dialog.getByLabel('Validation reserve (seconds)').fill('0');
-  await dialog.getByLabel('API spending cap (USD)').fill('0');
-  await dialog.getByLabel('Problem adapter').selectOption('bounded_continuous');
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog.getByText('Failed to fetch', { exact: true })).toBeVisible();
+  await form.getByLabel('Campaign name').fill(name);
+  await form.getByLabel('Compute cap (seconds)', { exact: true }).fill('200');
+  await form.getByLabel('Validation reserve (seconds)').fill('0');
+  await form.getByLabel('API spending cap (USD)').fill('0');
+  await form.getByLabel('Problem adapter').selectOption('bounded_continuous');
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await expect(form.getByText('Failed to fetch', { exact: true })).toBeVisible();
   const createdCommand = writes['campaign.create'][0];
   owner = createdCommand.campaign_id;
   async function state() {
@@ -48,8 +49,8 @@ test('campaign and context commands survive lost replies, refreshes and stale re
   }
   expect((await state()).campaign.id).toBe(owner);
   await expect.poll(() => revisions.includes(1), { timeout: 15_000 }).toBe(true);
-  await dialog.getByRole('button', { name: 'Create campaign', exact: true }).click();
-  await expect(dialog).not.toBeVisible();
+  await form.getByRole('button', { name: 'Create campaign', exact: true }).click();
+  await expect(form).not.toBeVisible();
   expect(writes['campaign.create']).toHaveLength(1);
   expect(lookups).toContain(createdCommand.id);
   expect((await state()).campaigns.filter((campaign: any) => campaign.name === name)).toHaveLength(1);

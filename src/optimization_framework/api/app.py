@@ -137,6 +137,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
     install_reports(app, workspace)
     from optimization_framework.formulation.api import install as install_formulation
     install_formulation(app, workspace)
+    from optimization_framework.campaigns.materials import install as install_materials
+    install_materials(app, workspace)
 
     @app.get("/api/campaigns/{campaign_id}/discovery")
     def discovery(campaign_id: str):

@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-// Shared mocks for the New campaign form and the problem importer.
+// Shared mocks for the New campaign page and the problem importer.
 export const adapters = [
   { id: 'meent_grating', name: 'MEENT binary grating', configuration_schema: { type: 'object', properties: {
     n_cells: { type: 'integer', minimum: 2, default: 64 }, wavelength_nm: { type: 'number', default: 1100 } } },
@@ -35,11 +35,22 @@ export async function emptyWorkspace(page: Page, extra: (path: string, method: s
     if (path === '/api/v1/problem-examples') return route.fulfill({ json: { examples: [grating, flrl] } });
     if (path === '/api/v1/commands' && method === 'POST') {
       commands.push(body);
-      const campaign = { id: body.campaign_id, version: 1, ...body.payload };
-      Object.assign(state, { campaign, campaigns: [campaign], tasks: body.payload.tasks.map((task: any, i: number) => ({ ...task, id: `task-${i}` })) });
+      if (body.operation !== 'campaign.create') return route.fulfill({ json: { id: body.id, request: body, actor: 'researcher', status: 'completed', outcome: {} } });
+      const { tasks = [], description: _description, ...charter } = body.payload;
+      const campaign = { id: body.campaign_id, version: 1, ...charter };
+      Object.assign(state, { campaign, campaigns: [campaign], tasks: tasks.map((task: any, i: number) => ({ ...task, id: `task-${i}` })) });
       return route.fulfill({ json: { id: body.id, request: body, actor: 'researcher', status: 'completed', outcome: { campaign } } });
     }
     return route.fulfill({ json: {} });
   });
-  return { commands };
+  return { commands, state };
+}
+
+/** Open the New campaign page from the empty Overview or the sidebar, and choose how the problem is defined; returns its form. */
+export async function openNewCampaign(page: Page, { from = 'overview', path }: { from?: 'overview' | 'sidebar'; path?: 'An installed problem' | 'Declare it myself' } = {}) {
+  await page.getByRole('button', { name: from === 'sidebar' ? 'New campaign' : 'Create campaign', exact: true }).first().click();
+  const form = page.getByRole('form', { name: 'New campaign' });
+  await form.waitFor();
+  if (path) await form.getByRole('radio', { name: path }).check();
+  return form;
 }

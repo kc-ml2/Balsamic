@@ -55,13 +55,19 @@ class TaskInput(Model):
         return self
 
 
+FORMULATE = "Formulate the problem described in this campaign's formulation notebook."
+
+
 class CampaignInput(Model):
     name: str = Field(min_length=1, max_length=200)
     objective: str = Field(default="Develop an effective optimizer for the chosen problem.", max_length=20000)
+    # The problem in the researcher's words. It opens the campaign's formulation notebook and is not kept on the campaign.
+    description: str = Field(default="", max_length=20000)
     compute_budget_seconds: float = Field(default=3600, gt=0)
     llm_budget_usd: float = Field(default=5, ge=0, le=10000)
     autonomy: Literal["manual", "guided", "delegated"] = "guided"
-    tasks: list[TaskInput] = Field(min_length=1, max_length=100)
+    # Empty while the problem is still being formulated; a problem is attached later with campaign.update.
+    tasks: list[TaskInput] = Field(default_factory=list, max_length=100)
     delegated_trial_seconds: float = Field(default=60, gt=0, le=86400)   # at most what one experiment may run
     validation_reserve_seconds: float = Field(default=120, ge=0)
     implementation_compute_budget_seconds: float = Field(default=0, ge=0, le=604800)
@@ -70,6 +76,15 @@ class CampaignInput(Model):
     def reserve_fits(self):
         if self.validation_reserve_seconds > self.compute_budget_seconds:
             raise ValueError("Validation reserve exceeds campaign compute budget")
+        return self
+
+    @model_validator(mode="after")
+    def problem_or_description(self):
+        if not self.tasks:
+            if not self.description.strip():
+                raise ValueError("Describe the problem, or choose a problem for the campaign")
+            if "objective" not in self.model_fields_set:
+                self.objective = FORMULATE
         return self
 
 
