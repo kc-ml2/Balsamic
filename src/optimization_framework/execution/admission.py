@@ -343,7 +343,7 @@ class Admission:
             reading = self.host_reader()
         else:
             from optimization_framework.execution.observability import get_observer
-            reading = get_observer(self.workspace)._host(time.time())
+            reading = get_observer(self.workspace).host()
         memory = reading.get("memory", {})
         devices = [device for device in reading.get("gpu", {}).get("devices", []) if device.get("memory_total_bytes")]
         device = max(devices, key=lambda item: item["memory_total_bytes"], default=None)

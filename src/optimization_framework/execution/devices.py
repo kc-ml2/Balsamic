@@ -139,7 +139,9 @@ class Pools:
                 f"{sizes['cpu']} on CPU, where a run takes one per numerical thread. The scheduler places each run when it starts: on the GPU "
                 "when its evaluator can use one and a GPU slot is free, else on CPU; set device (cpu or cuda) on a run to choose, and a race or "
                 "confirmation protocol keeps one device. The two differ in speed, so plan a run's wall time from the runtime profile's speed "
-                "on its device; comparison.report keeps the devices apart on worker_seconds and pools them on evaluation_requests.")
+                "on its device; comparison.report keeps the devices apart on worker_seconds and pools them on evaluation_requests. "
+                "Runs placed on the GPU wait for its slot by themselves: do not chain them with dependencies, which wait for the earlier run "
+                "to complete scientifically, and a run stopped at its time limit never does.")
 
     def view(self, live, mask_jobs=0):
         sizes, used = self.sizes(), self.used(live, mask_jobs)

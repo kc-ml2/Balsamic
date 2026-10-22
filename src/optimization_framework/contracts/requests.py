@@ -136,7 +136,9 @@ class TrialInput(Model):
     completion: dict[str, Any] | None = None
     initial_assets: list[str] = Field(default_factory=list)
     reuse_decision_ids: list[str] = Field(default_factory=list)
-    dependencies: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list, description=(
+        "Runs that must complete scientifically first, because this run uses what they produce. A run stopped at its time "
+        "limit is not complete, so do not use dependencies only to order runs: runs on one device wait for its slots by themselves."))
     diagnostics: list[DiagnosticSchedule] = Field(default_factory=list, max_length=20)
     recovery: RecoveryPolicy = Field(default_factory=RecoveryPolicy)
 

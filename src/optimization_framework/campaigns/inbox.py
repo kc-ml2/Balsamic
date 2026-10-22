@@ -93,8 +93,11 @@ def bind(store, inputs, command_id, run_id):
 
 
 def check_issues(workspace, command):
-    """An issue blocks its affected proposal or executable, not the whole campaign."""
+    """An issue blocks its affected proposal or executable, not the whole campaign. Stopping or pausing a run spends
+    nothing, so no issue holds it: an agent that cannot stop a run stuck behind an issue can only ask the researcher."""
     payload = command.payload
+    if command.operation == "trial.control" and payload.get("action") in {"stop", "pause"}:
+        return
     fields = {"trial_id", "hypothesis_id", "draft_id", "grant_id", "version_id", "implementation_version_id",
               "task_id", "requirement_id", "asset_id", "initial_assets", "dependencies", "assessment_id", "candidate_id"}
     targets = {value for key, values in payload.items() if key in fields

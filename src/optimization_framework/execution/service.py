@@ -44,6 +44,12 @@ def alive(trial):
     return bool(pid and identity and process_identity(pid) == identity)
 
 
+DEPENDENCY_ACTIONS = [
+    {"id": "start_anyway", "label": "Start them anyway",
+     "description": "Each waiting run starts once the run before it has ended, completed or not; the order stays."},
+    {"id": "stop", "label": "Stop them", "description": "The waiting runs are stopped; nothing else changes."}]
+
+
 class Workspace:
     def __init__(self, directory, max_workers=2, stop_grace_seconds=5, implementation_client=None, guidance=None, gpu_workers=0):
         self.store = Store(directory)
@@ -1191,19 +1197,57 @@ class Workspace:
             self.outbox_lock.release()
 
     def dependencies_ready(self, trial):
+        """Whether the runs a queued run depends on have completed. A dependency waits for scientific completion, which a
+        run stopped at its time limit never reaches; the researcher may then keep only the order (dependency_completion)."""
         waiting = []
         failed = []
+        order_only = trial.get("dependency_completion") == "finished"
         for dependency_id in trial.get("dependencies", []):
             parent = self.store.get(dependency_id, "trial")
             if parent["status"] in {"queued", "running", "pausing", "stopping", "paused", "interrupted"}:
                 waiting.append(dependency_id)
-            elif parent["status"] != "completed" or not (parent.get("result") or parent.get("progress", {})).get("scientific_complete"):
-                failed.append(dependency_id)
+            elif not order_only and (parent["status"] != "completed" or not (parent.get("result") or parent.get("progress", {})).get("scientific_complete")):
+                failed.append(parent)
         if failed:
+            parent = failed[0]
+            ended = parent.get("reason") or (parent.get("result") or {}).get("allocation_stop") or parent["status"]
+            chain = self.waiting_after(trial["id"])
             self.memory.issue(trial["campaign_id"], "dependency_incomplete",
-                "An experiment dependency did not satisfy its scientific completion condition. Resolve or replace it before launching dependent work.",
-                affected=trial["id"], evidence=failed)
+                f"{trial['id']} is to start after {parent['id']}, which ended without completing ({str(ended).replace('_', ' ')}), so "
+                + (f"it and {len(chain) - 1} run(s) queued after it cannot start." if len(chain) > 1 else "it cannot start.")
+                + " Start them anyway in their order, or stop them.",
+                affected=trial["id"], evidence=[row["id"] for row in failed], actions=DEPENDENCY_ACTIONS)
         return not waiting and not failed
+
+    def waiting_after(self, trial_id):
+        """A queued or paused run and every queued or paused run that depends on it, directly or through others."""
+        first = self.store.get(trial_id, "trial")
+        pending = [row for row in self.store.list_trials_in_status({"queued", "paused"}, first["campaign_id"])]
+        chain, ids = [first], {trial_id}
+        while True:
+            more = [row for row in pending if row["id"] not in ids and ids & set(row.get("dependencies", []))]
+            if not more:
+                return chain
+            chain.extend(more)
+            ids.update(row["id"] for row in more)
+
+    def act_on_issue(self, issue, action):
+        """What a researcher's choice on an issue does; an issue without actions is only marked."""
+        if issue["code"] != "dependency_incomplete" or action not in {item["id"] for item in DEPENDENCY_ACTIONS}:
+            raise ValueError("This issue has no such action")
+        done = []
+        for trial in self.waiting_after(issue["affected"]):
+            if action == "start_anyway":
+                with self.lock:
+                    record = self.store.get(trial["id"], "trial")
+                    record["dependency_completion"] = "finished"
+                    self.store.put("trial", record, "trial.dependencies_order_only")
+                if record["status"] == "paused":
+                    self.control(record["id"], ControlInput(action="resume", rationale="The researcher started runs waiting on an incomplete dependency"))
+            else:
+                self.control(trial["id"], ControlInput(action="stop", rationale="The researcher stopped runs waiting on an incomplete dependency"))
+            done.append(trial["id"])
+        return done
 
     def _write_control(self, trial):
         command = "stop" if trial["status"] in {"stopping", "stopped"} else "pause" if trial["status"] in {"pausing", "paused"} else "run"

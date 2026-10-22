@@ -231,8 +231,14 @@ class ResourceObservability:
             del device["address"]
         return {"status": "available" if devices else "none_detected", "devices": devices}
 
+    def host(self):
+        """The host reading on this observer's own clock, for callers outside a snapshot."""
+        with self.lock:
+            return self._host(self.monotonic())
+
     def _host(self, sampled):
-        if self._host_cache is not None and sampled - self._host_at < self.cache_seconds:
+        # A reading from another clock is never fresh: one caller stamping wall time froze the snapshot's reading for an hour.
+        if self._host_cache is not None and 0 <= sampled - self._host_at < self.cache_seconds:
             return self._host_cache
         memory = {}
         for line in (_read(self.proc_root / "meminfo") or "").splitlines():
@@ -273,7 +279,12 @@ class ResourceObservability:
             process = self._process(int(path.name), sampled)
             if process and process["rss_bytes"]:
                 command = _read(self.proc_root / path.name / "cmdline") or ""
-                role = "workspace" if process["pid"] == os.getpid() else "service" if any(name in (process["name"] + command).lower() for name in ("llama", "uvicorn", "pi-service", "tensorboard", "optimization_framework", "grating-lab")) else "other"
+                text = (process["name"] + command).lower()
+                role = ("workspace" if process["pid"] == os.getpid()
+                        else "worker" if any(name in text for name in ("execution.worker", "workspace.worker", "agents.diagnostics"))
+                        else "check" if "evaluation.preflight" in text
+                        else "service" if any(name in text for name in ("llama", "uvicorn", "pi-service", "tensorboard", "optimization_framework", "grating-lab"))
+                        else "other")
                 processes.append({key: process[key] for key in ("pid", "name", "rss_bytes", "threads")} | {"role": role})
         processes.sort(key=lambda process: process["rss_bytes"], reverse=True)
         result = {"cpu": {"logical_count": logical, "capacity_cores": capacity, "utilization_percent": utilization,

@@ -182,7 +182,7 @@ def test_the_researcher_can_set_a_question_aside_without_starting_a_turn(tmp_pat
     from optimization_framework.contracts.commands import Command
     w, c, lead = activated(tmp_path, monkeypatch)
     lead_run = submitted(w, w.pi.message(c['id'], {'message': 'Decide the gate path.'}, 'request'))
-    asked = call(w, lead, lead_run, 'researcher_ask', {'question': 'Which path?', 'reason': 'The gate refuses long runs.'}, 'ask')
+    asked = call(w, lead, lead_run, 'researcher_ask', {'question': 'Which path?', 'reason': 'The gate refuses long runs.', 'suggestion': 'Approve the runtime profile first.'}, 'ask')
     assert 'Unresolved questions' in call(w, lead, lead_run, 'yield_work', {'disposition': 'complete', 'summary': 'x'}, 'early')['error']
     runs = len(w.store.list('agent_run'))
     w.commands.execute(Command(id='dismiss', campaign_id=c['id'], expected_revision=w.store.get(c['id'], 'campaign')['version'],

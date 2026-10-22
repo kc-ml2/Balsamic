@@ -141,7 +141,8 @@ export function ThreadChat({ campaignId, threadId, route, onDetach }: { campaign
           onFork={merged ? undefined : m => fork(m)} onEdit={merged ? undefined : (message.role === 'user' ? m => setEditing(m) : undefined)} />} /> : null}
         {data?.placeholders?.length ? <div className="turn agent" data-testid="placeholders"><div className="meta"><Pill tone="agent">generating</Pill></div>
           {data.placeholders.map(p => <span key={p.id} className="chip" title="A strategy the lead is recording">{p.id} · pending</span>)}</div> : null}
-        {data?.questions.length ? data.questions.map(q => <div key={q.id} className="turn lab" data-testid="question">The lead asks: {q.question}</div>) : null}
+        {data?.questions.length ? data.questions.map(q => <div key={q.id} className="turn lab" data-testid="question">The lead asks: {q.question}
+          {q.suggestion ? <div className="small"><strong>It suggests:</strong> {String(q.suggestion)} <a href={formatHash({ page: 'inbox' }, threadId)}>Answer in the Inbox</a></div> : null}</div>) : null}
         <LiveTurn live={stream.live} thread={threadId} />
         {merged ? <div className="turn lab">This branch was merged into another thread. <a href={formatHash({ page: route.page }, data!.merged_into)}>Open it</a>.</div> : null}
       </div>

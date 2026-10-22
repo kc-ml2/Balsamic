@@ -52,7 +52,7 @@ class CampaignGuidance:
             self.store.put_many([("manager_state", state, None), ("manager_note", note, "manager.guidance_changed")])
             return state
 
-    def issue(self, campaign_id, code, message, *, affected=None, options=None, evidence=None, reopen=False):
+    def issue(self, campaign_id, code, message, *, affected=None, options=None, evidence=None, reopen=False, actions=None):
         self.store.get(campaign_id, "campaign")
         identity = "issue_" + digest([campaign_id, code, affected])[:24]
         with self.workspace.lock:
@@ -66,7 +66,7 @@ class CampaignGuidance:
             revision = issue.get("revision", issue["occurrences"])
             issue.pop("resolved_at", None)
             issue.pop("resolution_basis", None)
-            issue.update(code=code, message=message, affected=affected, evidence=evidence or [],
+            issue.update(code=code, message=message, affected=affected, evidence=evidence or [], actions=actions or [],
                          options=options or ["Discuss with the lead", "Defer"], status="pending",
                          occurrences=issue["occurrences"]+1, revision=revision+1, updated_at=now())
             self.store.put("manager_issue", issue, "manager.issue")
@@ -75,15 +75,24 @@ class CampaignGuidance:
                 "content": message, "issue_id": identity, "created_at": now()}, "message.created")
             return issue
 
-    def resolve_issue(self, issue_id, choice, comment, *, expected_revision=None):
+    def resolve_issue(self, issue_id, choice, comment, *, expected_revision=None, action=None):
+        """resolved and deferred only mark the issue; an action the issue offers is carried out (Workspace.act_on_issue)."""
         with self.workspace.lock:
             issue = self.store.get(issue_id, "manager_issue")
-            if choice not in {"resolved", "deferred"}:
-                raise ValueError("Choose resolved or deferred; use the lead's conversation for further direction")
+            if choice not in {"resolved", "deferred", "action"}:
+                raise ValueError("Choose resolved, deferred or one of the issue's actions; use the lead's conversation for further direction")
             revision = issue.get("revision", issue.get("occurrences", 1))
             if expected_revision is not None and revision != expected_revision:
                 raise ValueError("This issue changed; review its current state before resolving it")
-            issue.update(status=choice, comment=comment, resolved_at=now(), revision=revision+1)
+            taken = None
+            if choice == "action":
+                offered = {item["id"]: item for item in issue.get("actions") or []}
+                if action not in offered:
+                    raise ValueError("Choose one of this issue's actions")
+                taken = {**offered[action], "trial_ids": self.workspace.act_on_issue(issue, action)}
+                choice = "resolved"
+                comment = (comment + "\n" if comment else "") + f"Action: {offered[action]['label']} ({', '.join(taken['trial_ids'])})"
+            issue.update(status=choice, comment=comment, resolved_at=now(), revision=revision+1, action=taken)
             state = self.state(issue["campaign_id"])
             state["guidance_revision"] += 1
             self.store.put("manager_state", state)

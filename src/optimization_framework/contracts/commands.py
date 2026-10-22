@@ -185,8 +185,15 @@ class ContextEditInput(Contract):
 class IssueResolveInput(Contract):
     issue_id: str
     expected_revision: int = Field(ge=1)
-    choice: Literal["resolved", "deferred"]
+    choice: Literal["resolved", "deferred", "action"] = Field(description="resolved and deferred only mark the issue; action carries out one the issue offers")
+    action: str | None = Field(default=None, max_length=100, description="action: the id of one of the issue's actions")
     comment: str = Field(default="", max_length=20000)
+
+    @model_validator(mode="after")
+    def action_named(self):
+        if (self.choice == "action") != (self.action is not None):
+            raise ValueError("Name an action exactly when choosing action")
+        return self
 
 
 class ReuseInput(Contract):

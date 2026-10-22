@@ -66,16 +66,21 @@ function DecisionCard({ decision, version, campaignId, selected, onDone }: { dec
 
 function IssueCard({ issue, version, campaignId, onDone }: { issue: Issue; version?: number; campaignId: string; onDone: () => unknown }) {
   const [error, setError] = useState<string | null>(null);
-  const resolve = async (choice: 'resolved' | 'deferred') => {
+  const resolve = async (choice: 'resolved' | 'deferred' | 'action', action?: string) => {
     if (version === undefined) return;
-    try { await send({ operation: 'issue.resolve', campaignId, expectedRevision: version, payload: { issue_id: issue.id, choice, comment: '', expected_revision: issue.revision } }); await onDone(); }
+    try { await send({ operation: 'issue.resolve', campaignId, expectedRevision: version, payload: { issue_id: issue.id, choice, ...(action ? { action } : {}), comment: '', expected_revision: issue.revision } }); await onDone(); }
     catch (e) { setError(String((e as Error).message || e)); }
   };
+  const actions = issue.actions || [];
   return (
     <article className="card" data-testid="issue">
       <div className="row"><Pill tone="attention">{issue.code.replaceAll('_', ' ')}</Pill><span className="faint small">{when(issue.created_at)}</span>{issue.affected ? <span className="mono small faint">{issue.affected}</span> : null}</div>
       <p>{issue.message}</p>
-      <div className="row"><button className="btn small" onClick={() => resolve('resolved')}>Resolved</button><button className="btn small" onClick={() => resolve('deferred')}>Defer</button></div>
+      <div className="row wrap">
+        {actions.map((item, i) => <button key={item.id} className={`btn small${i === 0 ? ' primary' : ''}`} title={item.description} data-testid="issue-action" onClick={() => resolve('action', item.id)}>{item.label}</button>)}
+        <button className="btn small" title="Records that you dealt with it; it changes nothing by itself" onClick={() => resolve('resolved')}>Mark as handled</button>
+        <button className="btn small" onClick={() => resolve('deferred')}>Defer</button></div>
+      {actions.length ? <div className="faint small">{actions.map(item => `${item.label}: ${item.description}`).join(' ')}</div> : null}
       {error ? <div className="pill bad">{error}</div> : null}
     </article>
   );
@@ -91,6 +96,9 @@ function QuestionCard({ question, version, campaignId, threadId, onDone }: { que
     <article className="card" data-testid="question">
       <div className="row"><Pill tone="agent">the lead asks</Pill><span className="faint small">{when(question.created_at)}</span></div>
       <p>{question.question}</p>
+      {question.suggestion ? <p className="small" data-testid="question-suggestion"><strong>The lead suggests:</strong> {String(question.suggestion)}</p> : null}
+      {(question.options as string[] | undefined)?.length ? <div className="row wrap">{(question.options as string[]).map((option, i) =>
+        <button key={option} className={`btn small${i === 0 ? ' primary' : ''}`} data-testid="question-option" onClick={() => void answer(option)}>{option}</button>)}</div> : null}
       <Composer onSend={answer} placeholder="Your answer goes to the lead as a message" testId="answer-composer" />
     </article>
   );

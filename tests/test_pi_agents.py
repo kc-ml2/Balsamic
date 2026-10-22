@@ -129,7 +129,7 @@ def test_specialists_cannot_grant_authority_and_answers_invalidate_stale_command
     run['status']='submitted';w.store.put('agent_run',run)
     with pytest.raises(ValueError,match='not available'):
         PiTools(w.pi).call(child['id'],run['id'],'forbidden','campaign_command',{})
-    q = invoke(prepared,'researcher_ask',{'question':'Which objective?', 'reason':'Conflicting scientific specifications'},'question')
+    q = invoke(prepared,'researcher_ask',{'question':'Which objective?', 'reason':'Conflicting scientific specifications', 'suggestion':'Keep the charter objective.', 'options':['Keep the charter objective','Use the paper objective']},'question')
     w.pi.message(c['id'],{'message':'Use the current objective','question_id':q['id']},'answer')
     assert w.memory.state(c['id'])['guidance_revision'] == 1
     assert w.store.get(q['id'],'agent_question')['status'] == 'answered'

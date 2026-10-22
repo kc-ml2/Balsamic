@@ -256,3 +256,24 @@ def test_resource_api_is_read_only_and_missing_campaign_is_404(tmp_path):
     with app.state.workspace.store.connection() as database:
         after = database.execute("SELECT COUNT(*) FROM events").fetchone()[0]
     assert before == after
+
+
+def test_a_reading_taken_on_another_clock_never_freezes_the_dashboard(tmp_path):
+    observer, workspace, clock = make_observer(tmp_path)
+    observer.cache_seconds = 1
+    (observer.proc_root / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 900 kB\n")
+    first = observer.host()
+    # A caller that stamped its reading with wall time (seconds since 1970) used to keep the snapshot's
+    # uptime-clock reading "fresh" until that caller read again: an hour of GPU load from finished runs.
+    observer._host(clock.value + 1e9)
+    (observer.proc_root / "meminfo").write_text("MemTotal: 1000 kB\nMemAvailable: 100 kB\n")
+    clock.monotonic += .5
+    assert observer.host()["memory"]["available_bytes"] == 100 * 1024 != first["memory"]["available_bytes"]
+    # A run's worker is a worker, not a service process.
+    worker = observer.proc_root / "4242"
+    worker.mkdir()
+    (worker / "stat").write_text("4242 (python3) S 1 1 1 0 -1 0 0 0 0 0 7 3 0 0 20 0 1 0 999 0 0")
+    (worker / "status").write_text("Name:\tpython3\nVmRSS:\t2048 kB\nVmHWM:\t2048 kB\nThreads:\t2\n")
+    (worker / "cmdline").write_text("python3\0-m\0optimization_framework.execution.worker\0--directory\0/x\0")
+    clock.monotonic += 2
+    assert [row["role"] for row in observer.host()["processes"] if row["pid"] == 4242] == ["worker"]

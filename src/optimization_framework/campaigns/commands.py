@@ -390,7 +390,7 @@ class CommandService:
                 values = IssueResolveInput(**payload)
                 self._target(command, "issue_id", "manager_issue")
                 issue = self.workspace.memory.resolve_issue(values.issue_id, values.choice, values.comment,
-                    expected_revision=values.expected_revision)
+                    expected_revision=values.expected_revision, action=values.action)
                 outcome = {"issue_id": issue["id"], "revision": issue["revision"], "issue": issue}
             return outcome
         if command.operation == "cost.reconcile":

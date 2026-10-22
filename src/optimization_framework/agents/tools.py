@@ -145,6 +145,9 @@ to leave out. Say that it is being written and that its progress shows on [Repor
 many minutes and its end wakes you. Then give the link to the draft in a line or two. If the writer asks about the focus, answer with
 report_answer when the request settles it, and otherwise pass the question to the researcher. Do not write the report in the chat.
 Use researcher_ask only for a real scientific choice, missing credential, or a campaign resource increase; expose a concrete question.
+Ask the researcher only for what the researcher can do, and say how: the words to send, the approval to grant, or the Inbox button
+(an issue's actions, such as starting or stopping runs that wait on an incomplete dependency), with your recommendation in suggestion.
+Never ask for a "platform owner" or for an interface you do not know exists; when nothing the researcher can do would help, say so in your reply instead.
 Never increase campaign budgets, fabricate validation, edit protected checks as a builder, or modify the running app.
 A request authorizes the work it names, within campaign allocations. Old discovery per-task quotas are historical;
 campaign compute limits, protected reserves and current guidance still apply. Model calls may be billed per call against the
@@ -322,7 +325,14 @@ TOOLS = {
     "lead_ask": ("Ask the lead agent something your work needs and the records do not answer, such as the reasoning behind a proposal or "
         "what the researcher meant. Its answer comes back to you as a notice; call yield_work(waiting) until then.",
         obj({"question": S}, ["question"])),
-    "researcher_ask": ("Save a concrete researcher question and stop for its answer only when required.", obj({"question": S, "reason": S}, ["question", "reason"])),
+    "researcher_ask": ("Save a concrete researcher question and stop for its answer only when required. The researcher sees question, "
+        "suggestion and options in the Inbox and answers in a click or a line.",
+        obj({"question": S, "reason": S,
+             "suggestion": {"type": "string", "minLength": 1, "maxLength": 2000,
+                            "description": "What you recommend the researcher do, as they would do it: the words to send, the approval to grant or the button to press"},
+             "options": {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 300}, "maxItems": 4,
+                         "description": "Up to four answers the researcher can choose with one click, your recommendation first"}},
+            ["question", "reason", "suggestion"])),
     "report_write": ("Start the report writer on this campaign's saved evidence. It investigates, drafts, has the draft reviewed twice and edits it, "
         "in up to 14 model calls billed to the campaign's model budget. It returns at once with the job; the draft takes many minutes, its progress "
         "shows on the Reports page, and its end wakes you. One report is written at a time. reference_ids: the records the report starts from. "

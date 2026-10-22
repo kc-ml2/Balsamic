@@ -231,6 +231,12 @@ the composer shows them while they match the last message, and the stage default
 and folds all but the last two under a one-sentence title: the housekeeper's `fold_title` on the researcher message
 (written once the next exchange begins), else the question's first sentence. Expand all / fold all is one button.
 
+**Inbox: issues and questions.** An issue shows the actions that resolve it as buttons (a run waiting on one that ended
+without completing scientifically, for example: *Start them anyway*, keeping their order, or *Stop them*), beside *Mark as
+handled*, which only records that the researcher dealt with it, and *Defer*. A lead question carries its `suggestion`
+(what it recommends, as the researcher would do it) and up to four `options` answered with one click; `researcher_ask`
+requires the suggestion, and the agents are told to ask only for what the researcher can do.
+
 **What is happening.** A bar under the chat header says what the lead is doing in a line (`Lead waiting · experiment
 operator working · 5 runs`); clicked, it opens a panel with each agent at work or active in the last ten minutes (what
 it is doing now, else what it last said, from its disposition summary), the runs going and queued with their device,
