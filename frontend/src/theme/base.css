@@ -21,6 +21,7 @@ textarea { resize: vertical; }
 .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); } .btn.primary:hover { filter: brightness(1.05); }
 .btn.quiet { border-color: var(--line); background: transparent; color: var(--ink-2); } .btn.quiet:hover { background: var(--panel-2); color: var(--ink); border-color: var(--line-2); }
 .btn.small { padding: 3px 9px; font-size: 12px; }
+.btn[data-shortcut]::before { content: attr(data-shortcut); font-size: 10.5px; line-height: 1; padding: 1px 4px; border: 1px solid var(--line-2); border-radius: 3px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 /* Visual language. Status (inert): .pill, flat tinted capsule, no border, default cursor. Controls: .btn, bordered, hover
    darkens, pointer; .btn.primary for the one main action; .btn.quiet for secondary chrome. Links to records and pages:
    .chip (mono, dotted underline) and plain <a>. Fields: inputs with a solid border. */
@@ -58,6 +59,17 @@ textarea { resize: vertical; }
 .stage-head h1 { flex: 1; }
 .thread-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--line); }
 .thread-head select { max-width: min(320px, 55%); text-overflow: ellipsis; }
+.now-bar { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 12px; border: 0; border-bottom: 1px solid var(--line); background: var(--panel-2);
+  color: var(--ink-2); font-family: inherit; font-size: 12px; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.now-bar:hover { color: var(--ink); } .now-bar.agent { background: var(--agent-soft); color: var(--agent); }
+.now-bar .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; opacity: .7; }
+.now-bar.agent .dot { animation: now-pulse 1.4s ease-in-out infinite; }
+@keyframes now-pulse { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .now-bar.agent .dot { animation: none; } }
+.now-panel { border-bottom: 1px solid var(--line); padding: 8px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 40vh; overflow: auto; background: var(--panel); }
+.now-section { display: flex; flex-direction: column; gap: 4px; }
+.now-row { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.now-row .grow { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .lane strong, .thread-title { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .turns { flex: 1; overflow: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
 .turn { max-width: 92%; border-radius: var(--radius); padding: 8px 12px; border: 1px solid var(--line); background: var(--panel-2); }
@@ -196,6 +208,8 @@ table.quantities td { vertical-align: top; }
 
 /* the problem-definition gate */
 .card.unwritten { border-style: dashed; }
+.skip-row { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; } .skip-row + .skip-row { border-top: 1px solid var(--line); }
+.skip-reason { display: flex; flex-direction: column; gap: 3px; } .skip-card .skip-row { padding: 8px 0 4px; }
 .pill.warn { background: var(--warn-soft); color: var(--warn); } .pill.good { background: var(--good-soft, var(--accent-soft)); color: var(--good, var(--accent)); }
 
 /* Something is running: a pulsing dot, not only a tinted word. */

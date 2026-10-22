@@ -15,6 +15,9 @@ from optimization_framework.optimizers.binary import make_optimizer
 
 
 REFERENCE = json.loads((Path(__file__).parent / "fixtures/consolidation-numerical-reference.json").read_text())
+# The references were captured with the PyPI MEENT release's NumPy solver. The lab's MEENT, the meent-private fork on Torch,
+# reproduces every efficiency to about 3e-11 and every decision, count, loss and weight exactly: values compare to this.
+EFFICIENCY = 1e-10
 
 
 @pytest.mark.parametrize("profile", ["finite", "continuing_public", "continuing_default_init"])
@@ -33,7 +36,7 @@ def test_shared_learner_matches_frozen_sibling_trace_replay_and_networks(profile
             optimizer.tell(design, value)
             if optimizer.decisions > previous:
                 trace.append(value)
-        assert trace == [float(row["efficiency"]) for row in reference["trace"]]
+        assert trace == pytest.approx([float(row["efficiency"]) for row in reference["trace"]], abs=EFFICIENCY, rel=0)
         assert optimizer.updates == reference["summary"]["updates"]
         assert optimizer.loss == reference["summary"]["last_loss"]
         assert solver.evaluations == reference["summary"]["evaluations"]
@@ -43,7 +46,7 @@ def test_shared_learner_matches_frozen_sibling_trace_replay_and_networks(profile
                 torch.testing.assert_close(tensor, torch.tensor(saved[key], dtype=tensor.dtype), rtol=0, atol=0)
         state = optimizer.replay.state_dict()
         for key, values in reference["replay"].items():
-            np.testing.assert_array_equal(state[key][:state["size"]], np.asarray(values, dtype=state[key].dtype))
+            np.testing.assert_allclose(state[key][:state["size"]], np.asarray(values, dtype=state[key].dtype), rtol=0, atol=EFFICIENCY)
 
 
 @pytest.mark.parametrize("method", ["hillclimb", "refinement"])
@@ -65,8 +68,8 @@ def test_consolidated_controls_match_frozen_sibling_sequences_and_restore(method
             candidate = optimizer.ask()
             value = solver.evaluate(candidate).efficiency
             optimizer.tell(candidate, value)
-            assert value == float(row["efficiency"]), (method, i)
-            assert optimizer.best_efficiency == float(row["best_efficiency"])
+            assert value == pytest.approx(float(row["efficiency"]), abs=EFFICIENCY, rel=0), (method, i)
+            assert optimizer.best_efficiency == pytest.approx(float(row["best_efficiency"]), abs=EFFICIENCY, rel=0)
             assert solver.solver_calls == int(row["solver_calls"])
             assert solver.cache_hits == int(row["cache_hits"])
 

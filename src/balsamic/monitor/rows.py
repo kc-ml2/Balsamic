@@ -36,7 +36,7 @@ def monitor_view(workspace, campaign_id):
         assessment = workspace.resources.assessment(campaign_id)
     except (KeyError, ValueError) as exc:
         assessment = {"unavailable": str(exc)}
-    live = [t for t in store.list("trial", campaign_id) if t.get("status") in {"queued", "running", "pausing", "stopping"}]
+    live = store.list_trials_in_status({"queued", "running", "pausing", "stopping"}, campaign_id)
     remaining_live = sum(max(0.0, float(t.get("wall_seconds") or 0) - float(t.get("execution_seconds") or 0)) for t in live)
     budget_seconds = float(campaign.get("compute_budget_seconds") or 0)
     worker = {"budget_seconds": budget_seconds, **({"allocated_seconds": assessment["allocated_seconds"], "actual_seconds": assessment["actual_seconds"],
@@ -62,7 +62,7 @@ def monitor_view(workspace, campaign_id):
         host = snapshot.get("host") if isinstance(snapshot, dict) else None
     except Exception:   # the host snapshot is best effort; the row says when it is missing
         host = None
-    compute = {"busy": len(live), "limit": workspace.max_workers, "queued": len((admission_view or {}).get("waiting") or []) if isinstance(admission_view, dict) else None,
+    compute = {"busy": len(live), "limit": workspace.max_workers, "pools": workspace.devices.view([t for t in live if t["status"] != "queued"]), "queued": len((admission_view or {}).get("waiting") or []) if isinstance(admission_view, dict) else None,
                "waiting": (admission_view or {}).get("waiting") if isinstance(admission_view, dict) else None, "level": admission.level().get("level") if admission is not None else None,
                "gpu": gpu_row(host), "host": {"cpu_percent": ((host or {}).get("cpu") or {}).get("utilization_percent"), "memory_available_bytes": ((host or {}).get("memory") or {}).get("effective_available_bytes")} if host else None}
     try:

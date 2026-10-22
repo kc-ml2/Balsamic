@@ -1,5 +1,7 @@
 /** Slash commands typed in the composer: each becomes a command on the bus or a request to the lead. */
 export interface Slash { name: string; usage: string; help: string }
+/** What /skip and the note page's button ask: the lead makes the case for each skip, and you agree. */
+export const SKIP_REQUEST = 'Which of the empty sections of the problem note can be left unwritten? Propose a skip only where the confirmed charter already states the section or it does not apply here, each with your reason and what I confirm by agreeing; ask me about anything the records do not settle, and write the rest with me.';
 export const SLASH: Slash[] = [
   { name: 'discuss', usage: '/discuss <topic>', help: 'Fork a thread to discuss a topic with the lead' },
   { name: 'generate', usage: '/generate N [hybrid|diversify|revise of H01 H02] [note]', help: 'Ask for N new strategies (research.generate)' },
@@ -9,6 +11,7 @@ export const SLASH: Slash[] = [
   { name: 'probe', usage: '/probe', help: 'Measure evaluation speed (runtime.profile)' },
   { name: 'plan', usage: '/plan', help: 'Ask the resource planner for a plan' },
   { name: 'note', usage: '/note [what to write]', help: 'Ask the lead to draft or revise the problem note' },
+  { name: 'skip', usage: '/skip', help: 'Ask the lead which empty sections of the note can be left unwritten, and why' },
   { name: 'fork', usage: '/fork [title]', help: 'Start a branch from the last message' },
   { name: 'merge', usage: '/merge into <thread> <note>', help: 'Merge this branch into another with a note' },
   { name: 'park', usage: '/park', help: 'Park this branch with a summary' },
@@ -43,6 +46,7 @@ export function parseSlash(text: string, aliases: Record<string, string> = {}): 
     case 'probe': return { kind: 'probe' };
     case 'plan': return { kind: 'message', text: 'Plan how this campaign uses the machine within the resource level, and report the plan.', page_agent: 'resource_planner' };
     case 'note': return { kind: 'message', text: args ? `Revise the problem note: ${args}` : 'Draft the problem note from our conversation so far: objective, knobs, observables, noise, constraints, confounders, open questions.' };
+    case 'skip': return { kind: 'message', text: SKIP_REQUEST };
     case 'discuss': return { kind: 'fork', title: args || 'Discussion' };
     case 'fork': return { kind: 'fork', title: args };
     case 'park': return { kind: 'park' };

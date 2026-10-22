@@ -35,10 +35,10 @@ export function AutopilotToggle({ campaign, version, threadId }: { campaign: Cam
           <button className="btn primary small" style={{ marginTop: 6 }} onClick={() => set(false)} data-testid="autopilot-off">Turn autopilot off</button></>
         : gate ? <div className="callout attention" data-testid="autopilot-gate" data-kind={gate.kind}>
           <span className="callout-mark" aria-hidden="true">!</span>
-          <div className="grow"><strong>Autopilot waits for the problem definition: {gate.title.toLowerCase()}</strong>
+          <div className="grow"><strong>{gate.kind === 'evaluator' ? 'Autopilot waits until the evaluator starts in this lab' : `Autopilot waits for the problem definition: ${gate.title.toLowerCase()}`}</strong>
             <div className="small">{gate.text}</div>
             {requested ? <div className="small faint">Chosen at setup (cap {String(requested.compute_cap_seconds)} s); the switch stays yours once the gate opens.</div> : null}
-            <a className="btn small primary" style={{ marginTop: 6 }} href={withThread(gate.page, threadId)} data-testid="autopilot-gate-open">{gate.title}</a></div>
+            {gate.page ? <a className="btn small primary" style={{ marginTop: 6 }} href={withThread(gate.page, threadId)} data-testid="autopilot-gate-open">{gate.title}</a> : null}</div>
         </div>
         : <div className="form">{requested ? <p className="small muted" style={{ gridColumn: '1 / -1' }}>Chosen at setup; the problem is defined now, so it can start.</p> : null}<label>Compute cap (s)</label><input type="number" min={60} value={cap} onChange={e => setCap(Number(e.target.value))} data-testid="autopilot-cap" />
           <label>Report by</label><input type="datetime-local" value={reportBy} onChange={e => setReportBy(e.target.value)} />

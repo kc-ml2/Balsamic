@@ -49,11 +49,11 @@ def test_x_invariant_stripe_agrees_with_one_dimensional_meent():
     measured = Meent2DProblem().evaluator(instance).evaluate(candidate).objectives
     unit_cell = torch.tensor([[config["silicon_n_1050"]] * 8 + [1.0] * 8], dtype=torch.float64).reshape(1, 1, 16)
     reference = meent.call_mee(
-        backend=2, pol=0, n_top=1.45, n_bot=1.0,
+        pol=0, n_top=1.45, n_bot=1.0,
         theta=torch.tensor(0.0, dtype=torch.float64), phi=torch.tensor(0.0, dtype=torch.float64),
         fto=[2], wavelength=1050,
         period=torch.tensor([config["period_x_nm"], config["period_y_nm"]], dtype=torch.float64),
-        thickness=torch.tensor([325.0], dtype=torch.float64), type_complex=torch.complex128, device=0,
+        thickness=torch.tensor([325.0], dtype=torch.float64), type_complex=torch.complex128, device="cpu",
     )
     reference.ucell = unit_cell
     for pol, name in ((0, "te_plus1_transmission"), (1, "tm_plus1_transmission")):

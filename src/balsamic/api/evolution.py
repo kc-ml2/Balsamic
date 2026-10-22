@@ -31,7 +31,7 @@ def install(app, workspace):
                 "races": races, "finalists": workspace.store.list("finalist_selection", campaign_id), "confirmations": workspace.store.list("confirmation_protocol", campaign_id),
                 "stage": campaign_stage(workspace, campaign), "interventions": workspace.store.list("intervention", campaign_id)[-20:]}
         if progress:
-            live = [t for t in workspace.store.list("trial", campaign_id) if t.get("status") in {"queued", "running", "pausing", "stopping"}]
+            live = workspace.store.list_trials_in_status({"queued", "running", "pausing", "stopping"}, campaign_id)
             best = max((row["best"]["score"] for row in rows if row["best"]["score"] is not None), default=None)
             body["progress"] = {"best_so_far": best, "live_trials": [{"id": t["id"], "hypothesis_id": t.get("hypothesis_id"), "status": t["status"]} for t in live],
                                 "finalist_rungs": [{"id": row["id"], "rung": row["highest_rung_seconds"]} for row in rows if row["finalist"]]}
@@ -48,7 +48,7 @@ def install(app, workspace):
         row = next((r for r in rows if r["id"] == hypothesis_id), None)
         parents = [workspace.store.get(link["id"], "hypothesis") for link in hypothesis.get("parent_links") or [] if _exists(workspace, link["id"], "hypothesis")]
         children = [h for h in workspace.store.list("hypothesis", campaign_id) if any(link["id"] == hypothesis_id for link in h.get("parent_links") or [])]
-        trials = [t for t in workspace.store.list("trial", campaign_id) if t.get("hypothesis_id") == hypothesis_id]
+        trials = [t for t in workspace.store.list_trial_rows(campaign_id) if t.get("hypothesis_id") == hypothesis_id]
         from optimization_framework.agents.discussions import view as rounds_view
         rounds = rounds_view(workspace, campaign_id)
         mine = [r for r in rounds.get("rounds", []) if hypothesis_id in str(r)]

@@ -14,7 +14,7 @@ Operation = Literal["agent.activate", "agent.message", "agent.control", "agent.r
     "runtime.profile", "evaluator.equivalence", "trial.continue", "journal.compact", "journal.compaction_request", "approval.request", "workers.set", "experiments.rules", "trial.hide", "resources.plan", "resources.estimate",
     # The chat-centred workspace (docs/ui-workspace.md): threads, the problem note, graph interventions, autopilot, the library.
     "thread.fork", "thread.rename", "thread.park", "thread.unpark", "thread.pin", "thread.merge_draft", "thread.merge",
-    "hypothesis.allocate", "hypothesis.edit", "intervention.batch", "research.generate", "problem_note.revise", "problem_note.adopt", "note.ask", "note.resolve",
+    "hypothesis.allocate", "hypothesis.edit", "intervention.batch", "research.generate", "problem_note.revise", "problem_note.adopt", "problem_note.skip", "problem_note.unskip", "note.ask", "note.resolve",
     "autopilot.set", "library.publish", "library.apply", "campaign.stage_pin"]
 
 

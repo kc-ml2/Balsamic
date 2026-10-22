@@ -4,6 +4,9 @@
 #   scripts/dev-stack up [--real] [--dir runs/dev]    start (idempotent); then open http://127.0.0.1:8765
 #   scripts/dev-stack down                            stop what it started
 #   scripts/dev-stack status                          show ports and pids
+# MEENT is the meent-private fork that scripts/install-meent installs. Runs compute on one GPU slot when PyTorch sees a CUDA
+# device and on CPU slots beside it: one per physical core, less one kept for the system and the services, and less the GPU
+# slot, whose worker keeps a core busy. BALSAMIC_WORKERS (all slots) and BALSAMIC_GPU_WORKERS (0 for CPU only) choose.
 set -euo pipefail
 repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 cmd="${1:-status}"; shift || true
@@ -41,11 +44,18 @@ case "$cmd" in
       start pi env GRATING_PI_TOKEN_FILE="$token" GRATING_PI_WORKSPACE_URL="http://127.0.0.1:$WORKSPACE_PORT" \
         uv run python "$repo/tests/fake_harness.py" --port "$PI_PORT"
     fi
-    start workspace env "${mode_env[@]}" GRATING_PI_TOKEN_FILE="$token" GRATING_PI_URL="http://127.0.0.1:$PI_PORT" \
+    cores="$(lscpu -p=Core,Socket 2> /dev/null | grep -v '^#' | sort -u | wc -l)"; [ "$cores" -gt 0 ] || cores="$(nproc)"
+    gpu="${BALSAMIC_GPU_WORKERS:-}"
+    [ -n "$gpu" ] || gpu="$("$repo/.venv/bin/python" -c 'import torch; print(1 if torch.cuda.is_available() else 0)' 2> /dev/null || echo 0)"
+    workers="${BALSAMIC_WORKERS:-$(( cores > 2 ? cores - 1 : 2 ))}"; [ "$workers" -le 16 ] || workers=16
+    # A runtime profile answers for these settings only, as with scripts/labctl.
+    settings="{\"cuda_mps\": null, \"gpu_workers\": $gpu, \"workers\": $workers}"
+    start workspace env -u GRATING_DEVICE "${mode_env[@]}" GRATING_RESOURCE_SETTINGS="$settings" GRATING_PI_TOKEN_FILE="$token" GRATING_PI_URL="http://127.0.0.1:$PI_PORT" \
       GRATING_LLM_ENABLED=true GRATING_LLM_DISABLED=false GRATING_IMPLEMENTATION_URL="http://127.0.0.1:$LIBRARY_PORT" \
-      uv run optimization-lab --directory "$dir/workspace" --port "$WORKSPACE_PORT" --workers 2
+      uv run optimization-lab --directory "$dir/workspace" --port "$WORKSPACE_PORT" --workers "$workers" --gpu-workers "$gpu"
     for i in $(seq 1 30); do curl -sf "http://127.0.0.1:$WORKSPACE_PORT/api/health" > /dev/null && break; sleep 1; done
     echo "workspace: http://127.0.0.1:$WORKSPACE_PORT   (harness: $([ "$real" = 1 ] && echo real || echo fake) on $PI_PORT; library on $LIBRARY_PORT)"
+    echo "workers: $workers at once, $gpu on the GPU and $(( workers - gpu )) on CPU ($cores physical cores)"
     echo "frontend dev server with hot reload instead: cd frontend && npm run dev   (http://127.0.0.1:5173)";;
   down)
     # Each service is its own session (setsid): stop the whole group, then whatever still holds the ports.

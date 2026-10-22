@@ -52,11 +52,12 @@ def _empty(section):
 def definition(workspace, campaign):
     """The problem-definition gate: what still stands between this campaign and work on it (proposals, allocations, autopilot).
 
-    A campaign with a problem note must have every section of the note written, the note adopted at its current revision,
-    the charter confirmed and the tasks installed. A campaign that was never formulated (tasks from a problem adapter or
+    A campaign with a problem note must have every section of the note written (or skipped with the researcher's agreement,
+    balsamic.notes.skips), the note adopted at its current revision, the charter confirmed and the tasks installed. A campaign that was never formulated (tasks from a problem adapter or
     a confirmed charter, no note) is defined by its charter. Returns {ready, step, missing} where step is the next_step
     dict (None when ready) and missing lists the titles of the unwritten sections."""
     from balsamic.notes.service import SECTIONS, TITLES, revision_of
+    from balsamic.notes import skips
     store = workspace.store
     tasks = store.list("task", campaign["id"])
     waiting = len(store.list("hypothesis", campaign["id"]))
@@ -74,12 +75,18 @@ def definition(workspace, campaign):
     except KeyError:
         revision = None
     sections = (revision or {}).get("sections") or {}
-    missing = [TITLES[name] for name in SECTIONS if _empty(sections.get(name))]
+    skipped = skips.held(workspace, note)
+    missing = [TITLES[name] for name in SECTIONS if _empty(sections.get(name)) and name not in skipped]
     base["missing"] = missing
     if missing:
-        return {"ready": False, "missing": missing, "step": {**base, "kind": "sections", "title": "Complete the problem note", "page": "#note",
-                "text": "Not written yet: " + ", ".join(missing) + ". Every section must be written before proposals, allocations or autopilot; "
-                        "ask the lead to fill them (open questions reads \"none remaining\" when the definition is settled)."}}
+        proposed = [TITLES[entry["section"]] for row in workspace.store.list(skips.KIND, campaign["id"]) if row["note_id"] == note["id"] and row["status"] == "open"
+                    for entry in row["items"] if entry["status"] == "proposed" and TITLES[entry["section"]] in missing]
+        text = ("Not written yet: " + ", ".join(missing) + ". Each section is written, or skipped with your agreement, before proposals, allocations or autopilot. "
+                + ("The lead proposes skipping " + ", ".join(proposed) + ": agree or decline on the note or in the chat." if proposed else
+                   "Ask the lead to fill them, or to tell you which can be skipped: it proposes a skip only where the confirmed charter already states "
+                   "the section or it does not apply here, and you agree."))
+        return {"ready": False, "missing": missing, "step": {**base, "skipped": [TITLES[name] for name in SECTIONS if name in skipped], "proposed_skips": proposed,
+                "kind": "sections", "title": "Complete the problem note", "page": "#note", "text": text}}
     if note.get("status") == "drafting":
         again = note.get("adopted_revision") is not None
         return {"ready": False, "missing": [], "step": {**base, "kind": "adopt", "title": "Adopt the problem note" + (" again" if again else ""), "page": "#note",
@@ -95,7 +102,23 @@ def definition(workspace, campaign):
     return {"ready": True, "step": None, "missing": []}
 
 
+def evaluator(workspace, campaign, *, wait=False):
+    """An installed evaluator of the campaign's tasks that cannot start in this lab, as a next step; None when every one starts.
+
+    Experiments and runtime probes on it are refused until it does (EvaluatorService.prepare). Read without waiting: new software
+    is checked in the background, and the step appears once that check answers; with wait, the check is awaited."""
+    from optimization_framework.evaluation.preflight import readiness
+    for task in workspace.store.list("task", campaign["id"]):
+        if task.get("archived"):
+            continue
+        state = readiness(task, wait=wait, devices=workspace.devices.reachable(task))
+        if state["state"] == "cannot_start":
+            return {"kind": "evaluator", "title": "Install the evaluator's software", "page": "", "blocking": False, "proposals": 0, "missing": [],
+                    "text": state["reason"], "error": state["error"], "problem_id": task["problem"]["definition_id"]}
+    return None
+
+
 def next_step(workspace, campaign):
-    """The formulation step the researcher must take before work can start, or None once the definition gate is passed.
-    Shown on every page until then, louder once proposals are waiting on it."""
-    return definition(workspace, campaign)["step"]
+    """The step the researcher must take before work can start, or None: the definition gate's step, then an evaluator that cannot
+    start here. Shown on every page until then, louder once proposals are waiting on it."""
+    return definition(workspace, campaign)["step"] or evaluator(workspace, campaign)

@@ -194,6 +194,21 @@ missing and tells it to name the missing step instead of starting. A setup-time 
 `campaign.autopilot.requested` (the switch stays off) and prefills the dialog once the gate opens. The housekeeper's
 suggestions and the lead's briefing name the same step.
 
+**Skipping a section** (`balsamic/notes/skips.py`). A section other than the objective may stay unwritten when that is
+justified, and the researcher is not asked to judge it alone: the lead proposes, the researcher agrees. The lead's
+`problem_note_skip` records a `note_skip` proposal: per section a basis, `charter` (the confirmed charter of the note's
+adoption already states it; `charter_refs` are the paths that do, each must hold a value) or `not_applicable`, a reason,
+and `confirm`, the one statement the researcher confirms by agreeing. It is refused for a written section, empty paths, or
+open questions while the charter has unanswered ones; the lead's briefing tells it to sort each unwritten section (the
+charter states it, it does not apply, or it matters and becomes a question of at most two, with a suggested answer) and
+to write short sections before adoption rather than skip them. The proposal is a card in the conversation (message kind
+`note_skip`) and a row in each section on `#note`; the researcher's `problem_note.skip {skip_id, agree, decline}` records
+agreed skips on the note (`note.skipped`) without a revision, so the note is not reopened for adoption, and
+`problem_note.unskip` takes one back. The gate counts a skipped section as settled while it holds: a `charter` skip lapses
+when the confirmed charter no longer holds a value at a cited path. The `sections` step carries `skipped` and
+`proposed_skips`; at Adopt the formulator reads each skipped section's reason. The note page's "Ask which can be skipped"
+and `/skip` send the lead the same request.
+
 **Desks.** `GET /api/v1/campaigns/{id}/desks/{role}` is a page agent's conversation with the researcher (messages with
 `desk = role` and no thread). `DeskPanel` shows it docked under the agent's page (collapsible, agent-tinted header) and,
 while the lead's chat is detached, in the chat column of that page. `deskRole(route)` maps the address to the agent via
@@ -215,6 +230,13 @@ the composer shows them while they match the last message, and the stage default
 **Folded exchanges.** The chat groups messages into exchanges (a researcher message and the replies before the next one)
 and folds all but the last two under a one-sentence title: the housekeeper's `fold_title` on the researcher message
 (written once the next exchange begins), else the question's first sentence. Expand all / fold all is one button.
+
+**What is happening.** A bar under the chat header says what the lead is doing in a line (`Lead waiting · experiment
+operator working · 5 runs`); clicked, it opens a panel with each agent at work or active in the last ten minutes (what
+it is doing now, else what it last said, from its disposition summary), the runs going and queued with their device,
+progress and why a queued one waits (the admission reason, the run it depends on, or a runtime profile measuring),
+the GPU and CPU slots taken, and a link to the agents' conversation where the request is being worked on. A queued
+agent has a turn waiting for its previous one to finish. It reads `/agents`, `/monitor` and `/experiments`; no endpoint of its own.
 
 **Detached chat.** "Detach" in the chat header opens `#t/<thread>/chat`, a chat-only window (`window.name = balsamic-chat`);
 the main window replaces its chat column by a thin strip (Reattach) so the page fills it. Page links clicked in the detached window go over
@@ -272,7 +294,7 @@ kind, question, tier, escalation, answer, proposed edit, visual, status). The le
 note should change, a proposed edit the researcher accepts with `note.resolve`; the note never changes silently). The
 researcher revises with `problem_note.revise`: the page says so while the note is a draft (a callout under the tabs:
 question it, edit it, or tell the lead; adopt when it is right), an outline strip names every section with ✓ written
-or ! missing and "n of 7 still to write" (a click scrolls to it; "Fold written" leaves only the unwritten in view, each
+or ! missing (a skipped section counts as written, a proposed skip is marked) and "n of 7 still to write" (a click scrolls to it; "Fold written" leaves only the unwritten in view, each
 section folds on its own), and every section has "Ask about this" (the annotation menu with the section's opening words
 as the quote, no selection needed) and "Edit" (text, items and formulas in three fields that grow with the text, saved
 as a revision in the researcher's name); a proposed edit is shown as the note would read, the raw data folded. Tiers (`balsamic/notes/router.py`): lookup (the glossary) and quick (one

@@ -113,9 +113,11 @@ class EvaluatorService:
             if task_in_study(self.task_view(task), study):
                 self.require_numerical_evidence(task, study["id"])
 
-    def readiness(self, task, *, refresh=False, study_id=None, allow_waived=True):
+    def readiness(self, task, *, refresh=False, study_id=None, allow_waived=True, wait=True):
         if not task.get("evaluator_requirement_id"):
-            return {"state": "ready", "runnable": True, "reason": "Installed evaluator is available."}
+            # An installed evaluator is runnable once it was seen to start here; without wait a first check runs meanwhile.
+            from optimization_framework.evaluation.preflight import readiness
+            return readiness(task, wait=wait, devices=self.workspace.devices.reachable(task))
         binding = self.binding(task)
         if not binding:
             grants = [grant for grant in self.store.list("implementation_grant", task["campaign_id"]) if grant.get("task_id") == task["id"]]
@@ -208,6 +210,9 @@ class EvaluatorService:
 
     def prepare(self, task, *, study_id=None):
         if not task.get("evaluator_requirement_id"):
+            readiness = self.readiness(task)
+            if not readiness["runnable"]:
+                raise ValueError(readiness["reason"])
             return None
         readiness = self.readiness(task, refresh=True, study_id=study_id)
         if not readiness["runnable"]:

@@ -1,12 +1,14 @@
 """Pin executable source independently of the running workspace process."""
-from importlib.metadata import entry_points, version, PackageNotFoundError
+from importlib.metadata import distribution, entry_points, version, PackageNotFoundError
 from importlib.util import find_spec
 from pathlib import Path
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
+from urllib.parse import unquote, urlparse
 
 
 def package_names():
@@ -84,6 +86,27 @@ def checkout_identity(path):
     return f"{path.name}@{commit.stdout.strip()}{modified}"
 
 
+def installed_source(name):
+    """Where an installed package was built from when that is not a registry release: owner/repository@commit for a
+    git install, a checkout's identity for a local directory; None for a release or a package that is not installed."""
+    try:
+        text = distribution(name).read_text("direct_url.json")
+    except PackageNotFoundError:
+        return None
+    if not text:
+        return None
+    origin = json.loads(text)
+    url = urlparse(origin.get("url", ""))
+    if origin.get("vcs_info"):
+        return f"{url.path.strip('/').removesuffix('.git')}@{origin['vcs_info']['commit_id']}"
+    if url.scheme == "file":
+        try:
+            return checkout_identity(unquote(url.path))
+        except ValueError:
+            return Path(unquote(url.path)).name
+    return origin.get("url")
+
+
 def runtime_identity():
     result = {"python": ".".join(map(str, sys.version_info[:3]))}
     for name in ("meent", "numpy", "scipy", "torch"):
@@ -91,7 +114,7 @@ def runtime_identity():
             result[name] = version(name)
         except PackageNotFoundError:
             result[name] = None
-    # A checkout standing in for the installed 2D solver reports the same package version.
-    if os.environ.get("GRATING_MEENT_2D_SOURCE"):
-        result["meent_2d_source"] = checkout_identity(os.environ["GRATING_MEENT_2D_SOURCE"])
+    # The lab's MEENT is a fork that reports the release's version: the commit says which build it is.
+    if installed_source("meent"):
+        result["meent_source"] = installed_source("meent")
     return result

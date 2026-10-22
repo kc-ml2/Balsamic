@@ -59,6 +59,7 @@ def reconcile(workspace):
 
 
 def _reconcile(workspace):
+    from optimization_framework.execution.devices import environment
     from optimization_framework.execution.service import process_identity
     for job in workspace.store.list("fixed_mask_job"):
         if job["status"] not in {"queued", "starting", "running"}:
@@ -69,8 +70,9 @@ def _reconcile(workspace):
             if workspace.shutdown_event.is_set():
                 return
             diagnostics = sum(j["status"] in {"starting", "running"} for j in workspace.store.list("fixed_mask_job"))
-            trials = len(workspace.store.list_trials_in_status({"running", "pausing", "stopping"}))
-            if diagnostics >= 1 or trials + diagnostics >= workspace.max_workers:
+            # A fixed-mask job computes on CPU and takes one of its slots.
+            used = workspace.devices.used(workspace.store.list_trials_in_status({"running", "pausing", "stopping"}), diagnostics)
+            if diagnostics >= 1 or used["cpu"] >= workspace.devices.sizes()["cpu"]:
                 return
             directory.mkdir(parents=True, exist_ok=True)
             job.update(status="starting", started_epoch=time.time())
@@ -79,7 +81,7 @@ def _reconcile(workspace):
             with (directory / "worker.log").open("ab") as log:
                 child = subprocess.Popen([sys.executable, "-m", __name__, str(directory)], stdin=subprocess.DEVNULL,
                     stdout=log, stderr=log, start_new_session=True,
-                    env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1"})
+                    env={**os.environ, "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", **environment("cpu")})
             job.update(status="running", pid=child.pid, process_identity=process_identity(child.pid))
             workspace.store.put("fixed_mask_job", job, "fixed_mask.started")
             workspace.pi.diagnostic_processes[job["id"]] = child

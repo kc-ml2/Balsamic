@@ -359,7 +359,7 @@ class ResourceObservability:
     def _workers(self, campaign_id, costs, sampled, wall_clock):
         fields = {"status": "status", "pid": "pid", "process_identity": "process_identity", "attempt": "attempt",
                   "attempt_started_at": "attempt_started_at", "started_epoch": "started_epoch", "prior_execution_seconds": "prior_execution_seconds",
-                  "algorithm": "algorithm", "seed": "seed"}
+                  "algorithm": "algorithm", "seed": "seed", "device": "device"}
         rows = self._rows("trial", fields, campaign_id, active=True) + self._rows("fixed_mask_job", fields, campaign_id, active=True)
         index = {row["id"]: row for row in costs}
         jobs, warnings = [], []
@@ -397,13 +397,15 @@ class ResourceObservability:
             elapsed = max(0., wall_clock - _number(row["attempt_started_at"] or row["started_epoch"], wall_clock)) if measured else None
             spent = max(cost["spent_seconds"], _number(row["prior_execution_seconds"]) + elapsed) if elapsed is not None and cost["kind"] == "trial" else max(cost["spent_seconds"], elapsed or 0.)
             jobs.append({"id": row["id"], "campaign_id": row["campaign_id"], "kind": cost["kind"], "status": row["status"], "pid": row["pid"],
-                         "algorithm": row["algorithm"], "seed": row["seed"],
+                         "algorithm": row["algorithm"], "seed": row["seed"], "device": row["device"] or ("cpu" if cost["kind"] == "fixed_mask_job" else None),
                          "process_state": state, "rss_bytes": measured["rss_bytes"] if measured else None,
                          "peak_rss_bytes": measured["peak_rss_bytes"] if measured else None, "cpu_percent": measured["cpu_percent"] if measured else None,
                          "threads": measured["threads"] if measured else None, "wall_seconds": cost["wall_seconds"],
                          "spent_seconds": spent, "remaining_seconds": max(0., _number(cost["wall_seconds"]) - spent),
                          "measurement_scope": "Verified owner process only; descendant memory is not included"})
-        return {"configured_limit": self.workspace.max_workers, "running_count": sum(job["process_state"] == "alive" for job in jobs),
+        pools = getattr(self.workspace, "devices", None)
+        return {"configured_limit": self.workspace.max_workers, "device_slots": pools.sizes() if pools else None,
+                "running_count": sum(job["process_state"] == "alive" for job in jobs),
                 "queued_count": sum(job["status"] == "queued" for job in jobs), "jobs": jobs}, warnings
 
     def _manifest(self, race, sampled):

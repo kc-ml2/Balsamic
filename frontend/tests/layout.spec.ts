@@ -90,6 +90,21 @@ test('the next formulation step is called out on every page until the charter is
   await expect(page.getByTestId('next-step')).toHaveCount(0);
 });
 
+test('an evaluator that cannot start in this lab is called out with what to install, and the overview says so', async ({ page }) => {
+  const error = 'ModuleNotFoundError: The 2D MEENT solver runs on PyTorch, which is not installed; install it with scripts/install-meent';
+  const step = { kind: 'evaluator', title: "Install the evaluator's software", text: `The evaluator of meent_2d_dual_polarization_deflector cannot start in this lab: ${error}. No experiment or runtime probe can run on it until that is fixed.`,
+    page: '', blocking: false, proposals: 0, missing: [], error, problem_id: 'meent_2d_dual_polarization_deflector' };
+  await mockWorkspace(page, { '/api/v1/campaigns': { campaigns: [{ ...f.campaignRow, next_step: step }] } });
+  await page.goto(`/#t/${THREAD_ID}/overview`);
+  const callout = page.getByTestId('next-step');
+  await expect(callout).toHaveAttribute('data-kind', 'evaluator');
+  await expect(callout).toContainText("Next: install the evaluator's software");
+  await expect(callout).toContainText('scripts/install-meent');
+  await expect(callout.getByTestId('next-step-open')).toHaveCount(0);
+  await expect(page.getByTestId('evaluator-blocked')).toHaveText(error);
+  await expect(page.getByTestId('overview')).toContainText('defined');
+});
+
 test('status pills are inert and controls are buttons: the monitor and context controls carry the button class', async ({ page }) => {
   await mockWorkspace(page);
   await page.goto(`/#t/${THREAD_ID}/hypotheses`);

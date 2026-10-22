@@ -14,7 +14,7 @@ def install(app, workspace):
         def body():
             from optimization_framework.campaigns.experiment_rules import current, classify, check_trial_ids
             rules = current(workspace.store, campaign_id)
-            trials = [public_trial(trial) for trial in workspace.store.list("trial", campaign_id)]
+            trials = [public_trial(trial) for trial in workspace.store.list_trial_rows(campaign_id)]
             kinds = classify(trials, rules["long_run_threshold_seconds"] if "long_run_threshold_seconds" in rules else rules.get("threshold_seconds", 600),
                              check_trial_ids(workspace.store, campaign_id)) if trials else {}
             hidden = set(rules.get("hidden_trial_ids") or [])

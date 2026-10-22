@@ -76,6 +76,10 @@ class ProblemRegistry:
                 result.extend(hook())
         return result
 
+    def devices(self, name: str) -> tuple[str, ...]:
+        """Where an installed adapter's evaluator can compute, from an optional ``devices`` hook: CPU unless it says more."""
+        return tuple(getattr(self.get(name), "devices", ("cpu",)))
+
     def resolve(self, name: str, configuration: dict, fidelity: dict | None = None) -> ProblemInstance:
         return self.get(name).resolve(configuration, fidelity)
 

@@ -81,3 +81,28 @@ def test_the_gate_opens_after_sections_adoption_confirmation_and_tasks_and_close
 
 def test_a_campaign_defined_by_its_tasks_without_a_note_passes_the_gate(client, workspace, campaign):
     assert definition(workspace, workspace.store.get("demo", "campaign")) == {"ready": True, "step": None, "missing": []}
+
+
+def test_an_evaluator_that_cannot_start_here_is_the_next_step_and_what_the_lead_and_autopilot_are_told(client, workspace, campaign, monkeypatch):
+    """The 2D deflector's first probe failed on a missing PyTorch; the check finds that before anything is queued and says what to install."""
+    from optimization_framework.evaluation import preflight
+    monkeypatch.setattr(preflight, "_results", {})
+    monkeypatch.setattr(preflight, "_running", {})
+    missing = "ModuleNotFoundError: The 2D MEENT solver runs on PyTorch, which is not installed; install it with scripts/install-meent"
+    monkeypatch.setattr(preflight, "_probe", lambda problem, device: {"ok": False, "error": missing})
+    team = activate_team(client, workspace, campaign, monkeypatch)
+    assert "Evaluator now: cannot start in this lab" in workspace.lead_instructions(team) and missing in workspace.lead_instructions(team)
+    step = next_step(workspace, workspace.store.get("demo", "campaign"))
+    assert step["kind"] == "evaluator" and step["error"] == missing and step["page"] == "" and "No experiment or runtime probe" in step["text"]
+    assert client.get("/api/v1/campaigns").json()["campaigns"][0]["next_step"]["kind"] == "evaluator"
+    assert definition(workspace, workspace.store.get("demo", "campaign"))["ready"], "the problem is defined; only its evaluator is missing"
+    tasks = [t for t in workspace.store.list("task", "demo")]
+    refused = command(client, "trial.create", "demo", {"task_id": tasks[0]["id"], "algorithm": "random", "max_steps": 3, "wall_seconds": 5},
+                      workspace.store.get("demo", "campaign")["version"], expect=409)
+    assert "cannot start in this lab" in refused["detail"] and workspace.store.list("trial", "demo") == []
+    command(client, "autopilot.set", "demo", {"enabled": True, "compute_cap_seconds": 300, "rationale": "overnight"}, workspace.store.get("demo", "campaign")["version"])
+    assert rounds.round_state(workspace, "demo")["reason"] == "the evaluator cannot start in this lab: " + missing
+    # Installed: the next check passes, and the step is gone.
+    monkeypatch.setattr(preflight, "_results", {})
+    monkeypatch.setattr(preflight, "_probe", lambda problem, device: {"ok": True, "error": None})
+    assert workspace.evaluators.readiness(tasks[0])["runnable"] and next_step(workspace, workspace.store.get("demo", "campaign")) is None

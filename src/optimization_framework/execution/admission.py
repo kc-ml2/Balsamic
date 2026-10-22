@@ -7,8 +7,9 @@ configured and its method with their settings, and a kind's expected use is the 
 used, with a margin. A run of a kind never measured starts while no other such run is still starting;
 once it has made a few evaluations, or after a minute, its own live use counts as its expectation.
 
-The launcher's workers setting stays the researcher's hard maximum on runs at once; within it, memory
-decides, and each campaign's resource planner (a page agent) may plan fewer runs and give a kind never
+The launcher's workers setting stays the researcher's hard maximum on runs at once, split into GPU and CPU
+slots (execution/devices.py); within a free slot, memory decides, and only a run on the GPU is held for GPU
+memory. Each campaign's resource planner (a page agent) may plan fewer runs and give a kind never
 measured an estimate. When several campaigns have runs waiting, each gets an even share of the runs at
 once. Processes outside the platform are seen only in what the host reports free, which is what the
 level's headroom is for.
@@ -241,7 +242,8 @@ class Admission:
     def started(self, trial):
         """Follow a run from the moment it starts, so that runs admitted in the same pass count against each other."""
         kind_id = self._kind(trial)
-        entry = self.live[trial["id"]] = {"kind": kind_id, "campaign_id": trial["campaign_id"], "started": self.clock(), "label": self._label(trial),
+        entry = self.live[trial["id"]] = {"kind": kind_id, "campaign_id": trial["campaign_id"], "device": trial.get("device"),
+            "started": self.clock(), "label": self._label(trial),
             "started_at": now(), "measured": self.expected(kind_id)["memory_bytes"] is not None, "peak": 0, "current": 0, "evaluations": 0}
         self.waiting.pop(trial["id"], None)
         return entry
@@ -268,7 +270,7 @@ class Admission:
         peaks = [value for value in (earlier.get("memory_peak_bytes"), entry["peak"] or None) if value]
         devices = [value for value in (earlier.get("device_peak_bytes"), result.get("device_peak_bytes")) if value]
         self.store.put(USAGE, {"id": usage_id, "campaign_id": entry["campaign_id"], "subject": "trial", "subject_id": identity,
-            "kind": entry["kind"], "label": self._label(trial), "memory_peak_bytes": max(peaks) if peaks else None,
+            "kind": entry["kind"], "label": self._label(trial), "device": trial.get("device"), "memory_peak_bytes": max(peaks) if peaks else None,
             "device_peak_bytes": max(devices) if devices else None, "status": trial.get("status"),
             "out_of_memory": bool(OUT_OF_MEMORY.search(reason)) or earlier.get("out_of_memory", False),
             "started_at": earlier.get("started_at", entry["started_at"]), "ended_at": now(),
@@ -352,15 +354,16 @@ class Admission:
         return self.host_cache
 
     def _running(self, entry):
-        """What a running run is expected to use: its kind's expectation, or its own live use once it has settled."""
+        """What a running run is expected to use: its kind's expectation, or its own live use once it has settled.
+        A run on CPU holds no GPU memory, whatever runs of its kind on the GPU used."""
         expected = self.expected(entry["kind"])
         own = entry["peak"] * MARGIN if entry["peak"] else 0
-        return max(expected["memory_bytes"] or 0, own), expected["device_bytes"]
+        return max(expected["memory_bytes"] or 0, own), expected["device_bytes"] if entry.get("device") != "cpu" else None
 
-    def fits(self, trial, live, waiting_campaigns=()):
-        """None when a queued run may start now; otherwise why it waits, in words."""
+    def fits(self, trial, live, waiting_campaigns=(), *, device=None, held=None):
+        """None when a queued run may start now on device; otherwise why it waits, in words (held: no slot of its device is free)."""
         kind_id = self._kind(trial)
-        reason = self._fits(trial, kind_id, waiting_campaigns)
+        reason = held or self._fits(trial, kind_id, waiting_campaigns, device)
         if reason:
             self.waiting[trial["id"]] = reason
             since = self.wait_since.setdefault(trial["id"], self.clock())
@@ -372,10 +375,12 @@ class Admission:
             self.wait_since.pop(trial["id"], None)
         return reason
 
-    def _fits(self, trial, kind_id, waiting_campaigns=()):
+    def _fits(self, trial, kind_id, waiting_campaigns=(), device=None):
         level = self.level()
         running = list(self.live.values())
         mine = self.expected(kind_id)
+        if device == "cpu":
+            mine["device_bytes"] = None
         if mine["memory_bytes"] is None:
             self._signal(trial["campaign_id"], "resources.unmeasured_kind", kind_id, {"record_id": trial["id"], "trial_id": trial["id"],
                 "kind": kind_id, "label": self._label(trial)})
@@ -452,11 +457,14 @@ class Admission:
         view = {"level": level["level"], "set_by": level.get("set_by"), "updated_at": level.get("updated_at"),
                 "levels": [{"id": key, **{name: value for name, value in item.items()}} for key, item in LEVELS.items()],
                 "max_workers": getattr(self.workspace, "max_workers", None),
+                "pools": self.workspace.devices.view(self.store.list_trials_in_status({"running", "pausing", "stopping"}))
+                         if hasattr(self.workspace, "devices") else None,
                 "plan": self.plan_of(campaign_id) if campaign_id else None,
                 "waiting": [{"trial_id": identity, "reason": reason} for identity, reason in self.waiting.items()],
                 "kinds": sorted(kinds, key=lambda item: -(item["memory_bytes"] or 0))}
         if detail:
             view["running"] = [{"trial_id": identity, "campaign_id": entry["campaign_id"], "kind": entry["kind"], "label": entry.get("label"),
+                "device": entry.get("device"),
                 "memory_now_bytes": entry["current"], "memory_peak_bytes": entry["peak"], "evaluations": entry["evaluations"],
                 "running_seconds": round(self.clock() - entry["started"])} for identity, entry in self.live.items()]
             view["gpu_processes"] = gpu_processes()

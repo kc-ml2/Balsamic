@@ -381,8 +381,20 @@ def campaign_input(draft):
     if not body["objective"]:
         body["objective"] = "Develop an effective optimizer for the chosen problem."
     if draft.get("problem_id"):
-        body["tasks"] = [{"name": draft["problem_id"], "problem_id": draft["problem_id"], "configuration": {}}]
+        body["tasks"] = [starting_task(draft["problem_id"])]
     return body
+
+
+def starting_task(problem_id):
+    """The task an installed problem starts on: its first published example instance, else the adapter's own defaults.
+    Not every adapter has defaults (the 2D deflector declares every field), so an empty configuration is the last resort."""
+    from optimization_framework.evaluation.registry import problems
+    hook = getattr(problems.get(problem_id), "examples", None)
+    for example in (hook() if hook is not None else []):
+        for instance in example.get("instances") or []:
+            if instance.get("problem_id") == problem_id:
+                return {key: instance[key] for key in ("name", "problem_id", "configuration", "fidelity") if key in instance}
+    return {"name": problem_id, "problem_id": problem_id, "configuration": {}}
 
 
 def create(workspace, setup_id):

@@ -38,9 +38,24 @@ test('a failed turn is said to have failed with its work saved; an SSE frame ref
   await page.evaluate(() => (window as any).__pushChat({ type: 'RUN_STARTED', threadId: 't', runId: 'r' }));
   await page.evaluate(() => (window as any).__pushChat({ type: 'RUN_ERROR', threadId: 't', runId: 'r', message: 'The provider refused' }));
   await expect(page.getByTestId('live-turn')).toContainText('The provider refused');
+  // The inbox's first read gives the cursor a later read starts after; a frame before it lands has nothing to start after.
+  await expect(page.getByText('Extend trial trial_1 by 120 s?').first()).toBeVisible();
   const requests: string[] = [];
   page.on('request', r => { if (r.url().includes('/api/v1/campaigns/demo/inbox')) requests.push(r.url()); });
   await page.evaluate(() => (window as any).__pushEvent({ last_event_id: 11, events: [{ id: 11, kind: 'decision.resolved', record_id: 'extension_1', campaign_id: 'demo', status: 'resolved' }] }));
   await expect.poll(() => requests.length).toBeGreaterThan(0);
   expect(requests.at(-1)).toContain('after=10');
+});
+
+test('a bar under the chat header says what the lead is doing; opened, it lists the agents and the runs', async ({ page }) => {
+  await mockWorkspace(page);
+  await page.goto(`/#t/${THREAD_ID}/inbox`);
+  const bar = page.getByTestId('now-toggle');
+  await expect(bar).toContainText('Lead waiting');
+  await bar.click();
+  const panel = page.getByTestId('now-panel');
+  await expect(panel.getByTestId('now-agent').first()).toContainText('Lead');
+  await expect(panel).toContainText('Runs:');
+  await bar.click();
+  await expect(panel).toHaveCount(0);
 });

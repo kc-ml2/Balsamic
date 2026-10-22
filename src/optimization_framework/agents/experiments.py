@@ -40,7 +40,7 @@ def progress(workspace, campaign_id, finished=8):
         if allowed and evaluations and elapsed:
             left.append(max(0.0, (allowed - evaluations) * elapsed / evaluations))
         item = {"trial_id": trial["id"], "name": run_name(trial), "kind": kinds[trial["id"]], "status": trial["status"],
-                "method": trial.get("algorithm"), "seed": trial.get("seed"), "priority": trial.get("priority", 0),
+                "method": trial.get("algorithm"), "seed": trial.get("seed"), "device": trial.get("device"), "priority": trial.get("priority", 0),
                 "elapsed_seconds": elapsed, "allotted_seconds": cap, "evaluations": evaluations, "allotted_evaluations": allowed,
                 "best": measured.get("best_objective"), "seconds_left_at_most": round(min(left)) if left else None,
                 "reason": trial.get("reason") if trial["status"] in {"failed", "interrupted", "stopped"} else None}
@@ -50,7 +50,7 @@ def progress(workspace, campaign_id, finished=8):
     at_work = sorted((trial for trial in trials if trial["status"] in AT_WORK), key=lambda trial: (trial["status"] != "running", -trial.get("priority", 0), trial["created_at"]))
     done = sorted((trial for trial in trials if trial["status"] not in AT_WORK and not trial.get("hidden")),
                   key=lambda trial: trial.get("finished_at") or trial.get("updated_at") or "")[-finished:]
-    return {"worker_ceiling": workspace.max_workers, "campaign_limit": rules["max_concurrent"],
+    return {"worker_ceiling": workspace.max_workers, "device_slots": workspace.devices.sizes(), "campaign_limit": rules["max_concurrent"],
             "running": sum(trial["status"] == "running" for trial in trials),
             "short_run_seconds": rules["short_run_seconds"], "at_work": [row(trial, trend=True) for trial in at_work[:40]],
             "recently_finished": [row(trial) for trial in reversed(done)],

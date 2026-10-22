@@ -19,7 +19,8 @@ races, confirmation, the implementation service) is the same code as before.
 Linux, Python 3.12 or 3.13, `uv`, Node.js 22.
 
 ```bash
-uv sync --extra dev --extra meent
+uv sync --extra dev
+scripts/install-meent           # MEENT (the meent-private fork, Torch on CPU or CUDA), PyTorch and mask-optimizers (see below)
 (cd agent-harness && npm ci && npm run build)
 (cd frontend && npm ci && npm run build)
 scripts/start                   # the real Pi harness with your model provider (see "Models and keys")
@@ -137,6 +138,13 @@ saved as a revision in your name; or tell the lead in the chat what to change. *
 writes the charter (quantities, relations, assumptions); you confirm it on the note's Charter tab, which sets the
 campaign's tasks and ends formulation.
 
+Every section must be written before proposals or experiments, unless it is skipped with your agreement. You don't have
+to decide that alone: click **Ask which can be skipped** on the note (or type `/skip`) and the lead goes through the
+empty sections. Where the confirmed charter already states a section (the design variables, the objective and metrics,
+a deterministic evaluator) or the section does not apply, it proposes a skip with its reason and one statement for you
+to confirm. It asks you about what the records don't settle. You agree or decline on the card in the chat or in the
+section. A skip changes no text, so the note needn't be adopted again; it lapses if the charter stops saying what it cited.
+
 ### Watch the strategies evolve
 
 **Hypotheses** lists every strategy with its stage; a round in progress shows "1 of 3 ready". **Evolution** is the
@@ -221,10 +229,16 @@ localhost and use their token files.
 | Pi agent harness | The lead and its assistants, `scripts/pi-dev` | `(cd agent-harness && npm ci && npm run build)`; a signed-in provider ("Models and keys") |
 | bubblewrap (`bwrap`) | Executing generated and custom optimizer packages | Distribution package; Ubuntu also needs `deploy/grating-bwrap.apparmor` ([Pi runtime](docs/pi-agent-harness.md#host-prerequisite-found-during-rollout)) |
 | Docker | Full development workspaces with a browser IDE | `docker build -t grating-implementation-workspace:pi-0.87.1 deploy/implementation-workspace`, then set `development_enabled` |
-| `mask-optimizers` 0.1.0 | The `motif_surgery`, `nested_fourier` and `phenotype_de` methods | The `masks` extra from [kc-ml2/mask-optimizers](https://github.com/kc-ml2/mask-optimizers); see [optimizer plug-ins](docs/optimizer-plugins.md) |
-| `torch`, `gymnasium` | The learning-based optimizers and the original DQN loop | The `learners` extra |
+| MEENT: the meent-private fork, branch `feature/cuda-acceleration` | Both grating problems. The fork is Torch-only: the 1D solver runs it on CPU, the 2D solver on the GPU or on CPU, wherever the scheduler places each run (about 0.3 s per FLRL design on an RTX 3060, 2.2 s on one CPU core) | The `meent` extra, which `pyproject.toml` points at the fork (a private repository: installing needs read access) and `uv.lock` pins to a commit; `scripts/install-meent --update` moves it to the branch tip. The PyPI release with the same version number is refused. `scripts/start` runs one GPU slot when PyTorch sees a CUDA device, beside one CPU slot per physical core less one for the system and less the GPU slot (`BALSAMIC_GPU_WORKERS` and `BALSAMIC_WORKERS` change them) |
+| `mask-optimizers` 0.1.0 | The `motif_surgery`, `nested_fourier` and `phenotype_de` methods | The `masks` extra from [kc-ml2/mask-optimizers](https://github.com/kc-ml2/mask-optimizers), which `scripts/install-meent` installs; see [optimizer plug-ins](docs/optimizer-plugins.md) |
+| `torch`, `gymnasium` | The learning-based optimizers, the original DQN loop, and MEENT | The `learners` extra; `scripts/install-meent` installs it with the `meent` extra |
 | Paper and FLRL references | `/references` inside development workspaces | `paper_reference` in the launcher JSON or `GRATING_PAPER_REFERENCE`; `jLabKAIST/flrl` beside this repository or `GRATING_FLRL_REFERENCE` |
 | Chrome or Playwright Chromium | Browser tests | `npx playwright install chromium` |
+
+Before any experiment or runtime probe is queued, the lab builds the task's evaluator once in a fresh worker process. If a
+solver or package is missing, the run is refused with the evaluator's own error and what to install. Every page shows the
+same error as the next step, and the lead is told it instead of finding out from a failed probe. The check runs again by
+itself once the installed software changes.
 
 Git does not carry `runs/` (campaign databases, checkpoints and logs), provider credentials (`~/.pi/agent/auth.json`,
 `~/.config/balsamic/secrets.env`) or sibling checkouts.

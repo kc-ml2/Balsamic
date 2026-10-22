@@ -60,8 +60,13 @@ def test_tensorboard_is_mounted_and_experiment_reads_keep_design_access(tmp_path
     shown = client.get(f"/api/v1/experiments/{trial['id']}").json()["trial"]
     assert shown["progress"]["best_design"] == [[1]] and shown["result"]["best_objective"] == 0.2
     assert "pid" not in shown
-    listed = client.get(f"/api/v1/campaigns/{campaign['id']}/summary").json()["trials"]
-    assert [row["id"] for row in listed] == [trial["id"]] and "pid" not in listed[0]
+    summary = client.get(f"/api/v1/campaigns/{campaign['id']}/summary").json()
+    listed = summary["trials"]
+    assert [row["id"] for row in listed] == [trial["id"]] and "pid" not in listed[0] and summary["counts"]["trial"] == 1
+    # Pages poll the summary and the experiment list on every event: their runs leave the designs to the run's own record.
+    assert listed[0]["progress"] == {"best_objective": 0.2} and listed[0]["result"] == {"best_objective": 0.2}
+    rows = client.get(f"/api/v1/campaigns/{campaign['id']}/experiments").json()
+    assert all("best_design" not in (row.get("progress") or {}) for group in ("short", "long", "checks") for row in rows[group])
 
 
 def test_scoped_reads_change_their_cursor_on_a_committed_event(tmp_path):

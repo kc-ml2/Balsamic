@@ -115,5 +115,22 @@ def register(workspace=None):
     register_tool("problem_note_draft", "Write or revise the campaign's problem note. sections: any of " + ", ".join(SECTIONS) +
                   ", each {text, items[], latex[]}; glossary: [{term, definition}]. Each call is a new revision; the researcher sees the diff.",
                   obj({"title": S, "sections": {"type": "object"}, "glossary": {"type": "array", "items": {"type": "object"}}, "reason": S}, ["sections"]), problem_note_draft)
+    def problem_note_skip(tools, agent, run, args, identity):
+        from balsamic.notes import skips
+        thread = thread_of_run(tools, run)
+        record = skips.propose(tools.workspace, agent["campaign_id"], skips.ProposeInput(**args), key=identity, run_id=run["id"], thread_id=thread["id"] if thread else None)
+        return {"skip_id": record["id"], "sections": [item["section"] for item in record["items"]], "link": "#note",
+                "note": "Nothing is skipped until the researcher agrees on the card or the note page. In your reply, say in a line per section why it "
+                        "need not be written and what they confirm by agreeing, and ask about anything the records do not settle."}
+
+    register_tool("problem_note_skip", "Propose leaving sections of the problem note unwritten, for the researcher to agree to. Each skip: section (not the "
+                  "objective), basis charter (the confirmed charter already states it; charter_refs are its paths, e.g. variables, objective, metrics, "
+                  "constraints, evaluator.deterministic, quantities.<name>) or not_applicable (the section does not apply to this problem), reason (why, "
+                  "in the researcher's terms), confirm (the one statement the researcher confirms by agreeing). Refused when the section is written, the "
+                  "cited paths are empty, or, for open questions, the charter still has unanswered ones.",
+                  obj({"skips": {"type": "array", "minItems": 1, "maxItems": 6, "items": obj({
+                      "section": {"enum": ["knobs", "observables", "noise", "constraints", "confounders", "open_questions"]},
+                      "basis": {"enum": ["charter", "not_applicable"]}, "charter_refs": {"type": "array", "items": S, "maxItems": 12},
+                      "reason": S, "confirm": S}, ["section", "basis", "reason", "confirm"])}}, ["skips"]), problem_note_skip)
     register_tool("problem_note_propose", "Answer a question the researcher asked on the note (annotation_id) and, when the note should change, propose the edit; the researcher accepts it.",
                   obj({"annotation_id": S, "answer": S, "proposed_edit": {"type": "object"}}, ["annotation_id", "answer"]), problem_note_propose)

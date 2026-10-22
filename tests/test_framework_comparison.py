@@ -72,3 +72,23 @@ def test_evaluator_measurements_are_not_reported_as_methods(tmp_path):
     assert [trial["id"] for group in result["groups"] for trial in group["trials"]] == [search]
     assert {row["trial_id"] for row in result["excluded"] if "measurement of the evaluator" in row["reason"]} == {probe, replay}
     assert [row["algorithm"] for row in result["groups"][0]["method_summaries"]] == ["coordinate"]
+
+
+def test_runs_on_the_gpu_and_on_cpu_are_compared_apart_on_time_and_together_on_evaluations(tmp_path):
+    workspace = Workspace(tmp_path)
+    campaign = workspace.create_campaign(CampaignInput(name="Two devices", compute_budget_seconds=200, validation_reserve_seconds=0,
+        tasks=[TaskInput(name="Continuous", problem_id="bounded_continuous", configuration={"dimensions": 2})]))
+    task = workspace.current_tasks(campaign["id"])[0]
+    for seed, device in enumerate(("cuda", "cpu", "cpu")):
+        trial = workspace.create_trial(TrialInput(campaign_id=campaign["id"], task_id=task["id"], algorithm="random", max_steps=4, wall_seconds=20, seed=seed))
+        result = run(workspace.job_dir(trial["id"]))
+        # Placed as the scheduler would place a run of an evaluator that can use the GPU.
+        trial.update(result=result, progress=result, attempt=1, status="completed", device=device)
+        workspace.store.put("trial", trial)
+        workspace.capture_evidence(trial)
+    on_time = report(workspace, campaign["id"], cost_axis="worker_seconds")
+    assert sorted((group["condition"]["device"], len(group["trials"])) for group in on_time["groups"]) == [("cpu", 2), ("cuda", 1)]
+    assert "compared separately" in on_time["interpretation"]
+    on_evaluations = report(workspace, campaign["id"], cost_axis="evaluation_requests")
+    assert [len(group["trials"]) for group in on_evaluations["groups"]] == [3] and "device" not in on_evaluations["groups"][0]["condition"]
+    assert "compared separately" not in on_evaluations["interpretation"]

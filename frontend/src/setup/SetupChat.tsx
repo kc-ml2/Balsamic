@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import { Composer } from '../chat/Composer';
+import { Composer, shortcutDigit } from '../chat/Composer';
 import { Markdown } from '../chat/render/Markdown';
 import { Failed, Loading, Pill, when } from '../primitives/ui';
 import { navigate } from '../router/routes';
@@ -42,6 +42,18 @@ export function SetupChat({ setupId }: { setupId: string | null }) {
     } catch (e) { setError(String((e as Error).message || e)); }
     finally { setBusy(false); }
   };
+  // Ctrl+1 … Ctrl+9 picks the current step's choices, wherever the focus is on the page.
+  const choices = data?.status === 'asking' ? data.step?.choices || [] : [];
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const n = shortcutDigit(e), choice = n ? choices[n - 1] : undefined;
+      if (!choice) return;
+      e.preventDefault();
+      if (!busy) void send({ choice: choice.id });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const startOver = async () => {
     if (!setupId) return;
     try { await api(`/api/v1/setup/${setupId}/abandon`, { method: 'POST' }); } catch { /* a closed setup is already over */ }
@@ -70,11 +82,12 @@ export function SetupChat({ setupId }: { setupId: string | null }) {
           </article>))}
         {data!.model_note ? <div className="turn lab">{data!.model_note}</div> : null}
         {step && data!.status === 'asking' && step.choices.length ? <div className="row wrap" data-testid="setup-choices" style={{ padding: '0 4px' }}>
-          {step.choices.map(c => <button key={c.id} className="btn small" disabled={busy} title={c.description || ''} onClick={() => send({ choice: c.id })} data-choice={c.id}>{c.label}</button>)}</div> : null}
+          {step.choices.map((c, i) => <button key={c.id} className="btn small" disabled={busy} title={(c.description || c.label) + (i < 9 ? `  (Ctrl+${i + 1})` : '')} onClick={() => send({ choice: c.id })} data-choice={c.id}
+            data-shortcut={i < 9 ? i + 1 : undefined} aria-keyshortcuts={i < 9 ? `Control+${i + 1}` : undefined}>{c.label}</button>)}</div> : null}
         {error ? <div className="pill bad">{error}</div> : null}
       </div>
       <Composer key={step?.field} onSend={text => send({ text })} disabled={busy || data!.status !== 'asking' || (step ? !step.free_text && !!step.choices.length : true)}
-        why={step && !step.free_text ? 'Pick one of the choices above' : undefined} placeholder={step?.placeholder || 'Type your answer'} testId="setup-composer" />
+        why={step && !step.free_text ? 'Pick one of the choices above' : undefined} placeholder={step?.placeholder || 'Type your answer'} testId="setup-composer" autoFocus />
     </div>
   );
 }

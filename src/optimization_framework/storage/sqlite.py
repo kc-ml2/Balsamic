@@ -206,6 +206,15 @@ class Store:
             rows = db.execute(query, args).fetchall()
         return [json.loads(row["data"]) for row in rows]
 
+    def count(self, kind: str, campaign_id: str | None = None) -> int:
+        """How many records of a kind there are, without decoding them."""
+        query, args = "SELECT COUNT(*) FROM records WHERE kind=?", [kind]
+        if campaign_id is not None:
+            query += " AND campaign_id=?"
+            args.append(campaign_id)
+        with self.connection() as db:
+            return db.execute(query, args).fetchone()[0]
+
     def revision(self, *kinds):
         """In-process write count for record kinds; equal values mean no writes since."""
         with self.lock:
@@ -276,6 +285,26 @@ class Store:
         query += " ORDER BY rowid"
         with self.connection() as db:
             return [dict(row) for row in db.execute(query, args).fetchall()]
+
+    # What a list of runs leaves out: designs and archives (a 2D run's are megabytes) and the frozen source and
+    # environment manifests. get() returns the whole record.
+    ROW_OMITS = ("$.progress.archive", "$.progress.best_candidate", "$.progress.best_design", "$.result.archive",
+                 "$.result.best_candidate", "$.result.best_design", "$.execution_manifest", "$.experiment_spec", "$.scientific_environment")
+
+    def list_trial_rows(self, campaign_id: str | None = None) -> list[dict]:
+        """A campaign's runs as a page lists them: every scalar and summary, without ROW_OMITS, trimmed in SQLite."""
+        return self._derived_trials(("rows", campaign_id), lambda: self._list_trial_rows(campaign_id))
+
+    def _list_trial_rows(self, campaign_id):
+        query = "SELECT json_remove(data," + ",".join(f"'{path}'" for path in self.ROW_OMITS) + ") AS data FROM records WHERE kind='trial'"
+        args = []
+        if campaign_id is not None:
+            query += " AND campaign_id=?"
+            args.append(campaign_id)
+        query += " ORDER BY rowid"
+        with self.connection() as db:
+            rows = db.execute(query, args).fetchall()
+        return [json.loads(row["data"]) for row in rows]
 
     def list_compact_trials(self, campaign_id: str | None = None) -> list[dict]:
         """Trim duplicated masks in SQLite before allocating Python objects.

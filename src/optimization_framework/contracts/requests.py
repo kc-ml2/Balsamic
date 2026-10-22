@@ -120,6 +120,9 @@ class TrialInput(Model):
     max_steps: int = Field(default=512, ge=1, le=10000000)
     wall_seconds: float = Field(default=60, gt=0, le=86400)
     numerical_threads: int = Field(default=1, ge=1, le=4, strict=True)
+    device: Literal["cpu", "cuda"] | None = Field(default=None, description=(
+        "Where the evaluator computes. Omit to let the scheduler place the run when it starts: on the GPU when its evaluator "
+        "can use one and a GPU slot is free, else on CPU. A run's race or confirmation protocol keeps one device."))
     race_id: str | None = None
     race_phase: Literal["preflight", "calibration", "development", "confirmation", "validation"] | None = None
     schedule_steps: int | None = Field(default=None, ge=1, le=10000000)

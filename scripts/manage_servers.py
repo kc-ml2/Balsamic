@@ -71,13 +71,14 @@ def configuration(path, no_llm=False):
         if not isinstance(config["paper_reference"], str) or not config["paper_reference"].strip():
             raise LauncherError("paper_reference must be a nonempty path or null.")
         config["paper_reference"] = str((ROOT / Path(config["paper_reference"]).expanduser()).resolve())
-    # Optional source checkout of the 2D solver, run on CUDA instead of the installed package on CPU.
-    if config.get("meent_2d_source") is not None:
-        if not isinstance(config["meent_2d_source"], str) or not config["meent_2d_source"].strip():
-            raise LauncherError("meent_2d_source must be a nonempty path or null.")
-        config["meent_2d_source"] = str((ROOT / Path(config["meent_2d_source"]).expanduser()).resolve())
-        if not (Path(config["meent_2d_source"]) / "meent/__init__.py").is_file():
-            raise LauncherError(f"meent_2d_source has no meent package: {config['meent_2d_source']}")
+    # How many of the workers compute on the GPU (one run each); the rest compute on CPU. The scheduler places each run.
+    gpu = config.setdefault("gpu_workers", 0)
+    if type(gpu) is not int or gpu < 0:
+        raise LauncherError("gpu_workers must be a nonnegative integer.")
+    for retired in ("meent_device", "meent_2d_source"):
+        if config.get(retired) is not None:
+            raise LauncherError(f"{retired} is gone: the scheduler places each run on the GPU or on CPU; "
+                                "set gpu_workers to the runs that compute on the GPU (1 for one card) instead.")
     # CUDA Multi-Process Service: concurrent workers overlap on the GPU instead of taking turns.
     if type(config.get("cuda_mps", False)) is not bool:
         raise LauncherError("cuda_mps must be a boolean.")
@@ -232,17 +233,15 @@ def service_environment(config):
         env["GRATING_CODEX_TIMEOUT_SECONDS"] = str(config["codex_timeout_seconds"])
     if config.get("paper_reference"):
         env["GRATING_PAPER_REFERENCE"] = config["paper_reference"]
-    # Only this configuration selects the 2D solver, not a variable left in the calling shell.
-    env.pop("GRATING_MEENT_2D_SOURCE", None)
-    if config.get("meent_2d_source"):
-        env["GRATING_MEENT_2D_SOURCE"] = config["meent_2d_source"]
+    # The scheduler sets each worker's device; a variable left in the calling shell must not.
+    env.pop("GRATING_DEVICE", None)
     if config.get("cuda_mps"):
         env.update(Mps(config).environment)
     env.pop("GRATING_RUNTIME_GATE_SECONDS", None)
     if config.get("runtime_gate_seconds"):
         env["GRATING_RUNTIME_GATE_SECONDS"] = str(config["runtime_gate_seconds"])
     # A runtime profile answers for these settings only; changing one asks for a new measurement.
-    env["GRATING_RESOURCE_SETTINGS"] = json.dumps({key: config.get(key) for key in ("workers", "cuda_mps", "meent_2d_source")}, sort_keys=True)
+    env["GRATING_RESOURCE_SETTINGS"] = json.dumps({key: config.get(key) for key in ("workers", "gpu_workers", "cuda_mps")}, sort_keys=True)
     # The token file must identify this library, even if another service's token
     # happens to be present in the calling shell.
     env.pop("GRATING_IMPLEMENTATIONS_TOKEN", None)
@@ -613,7 +612,7 @@ def serve(role, config):
         app = create_app(directory / "library")
     else:
         from balsamic.app import create_app
-        app = create_app(directory / "workspace", max_workers=config["workers"],
+        app = create_app(directory / "workspace", max_workers=config["workers"], gpu_workers=config["gpu_workers"],
                          frontend_directory=config["frontend_directory"])
     uvicorn.run(app, host="127.0.0.1", port=port_for(config, role), timeout_graceful_shutdown=10)
 

@@ -1,4 +1,4 @@
-"""TM-polarized 1D RCWA forward model, using MEENT's NumPy solver.
+"""TM-polarized 1D RCWA forward model, using the lab's MEENT (the meent-private fork) with Torch on CPU.
 
 Power efficiencies are normalized to incident power. The design is viewed from
 the incident glass half-space: glass -> patterned Si/air layer -> air. Positive
@@ -7,10 +7,10 @@ diffraction order follows MEENT's kx = kx_inc + m*lambda/period convention.
 from collections import OrderedDict
 from dataclasses import asdict, dataclass
 
-import meent
 import numpy as np
 
 from .config import PhysicsConfig
+from .rcwa import load
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,8 @@ def silicon_index(config):
     """
     if config.material == "constant":
         return complex(config.silicon_n, -config.silicon_k)
-    from meent.on_numpy.modeler.modeling import read_material_table
+    load()
+    from meent.on_torch.modeler.modeling import read_material_table
 
     table = np.asarray(read_material_table()["SI_GREEN-2008"])
     if table.ndim != 2 or table.shape[1] != 3:
@@ -87,8 +88,10 @@ class ForwardSolver:
         self.solver_calls = 0
         self.cache_hits = 0
         self._cache = OrderedDict()
+        meent, self._torch = load()
+        # A 1D cell has 2*fourier_order+1 harmonics (31 by default): a CUDA launch would cost more than the solve.
         self._solver = meent.call_mee(
-            backend=0,
+            device="cpu",
             n_top=config.n_incident,
             n_bot=config.n_exit,
             theta=0,
@@ -98,7 +101,7 @@ class ForwardSolver:
             wavelength=config.wavelength_nm,
             thickness=[config.thickness_nm],
             fto=[config.fourier_order, 0],
-            type_complex=np.complex128,
+            type_complex=self._torch.complex128,
             fourier_type=1,  # continuous integration of piecewise-constant cells
         )
 
@@ -133,11 +136,12 @@ class ForwardSolver:
             return self._cache[key]
 
         indices = np.where(design == 1, self.silicon_index, self.config.n_exit)
-        self._solver.ucell = indices.astype(np.complex128).reshape(1, 1, -1)
+        self._solver.ucell = self._torch.from_numpy(indices.astype(np.complex128).reshape(1, 1, -1))
         self.solver_calls += 1
-        result = self._solver.conv_solve()
-        reflected = np.asarray(result.de_ri, dtype=float).reshape(-1)
-        transmitted = np.asarray(result.de_ti, dtype=float).reshape(-1)
+        with self._torch.no_grad():
+            result = self._solver.conv_solve()
+        reflected = result.de_ri.numpy().astype(float).reshape(-1)
+        transmitted = result.de_ti.numpy().astype(float).reshape(-1)
         count = 2 * self.config.fourier_order + 1
         if reflected.size != count or transmitted.size != count:
             raise RuntimeError("Unexpected MEENT diffraction-order array shape")

@@ -57,14 +57,15 @@ def install(app, workspace):
         ensure_main(workspace, campaign_id)
         tasks = workspace.store.list("task", campaign_id)
         charters = workspace.store.list("charter", campaign_id)
-        counts = {kind: len(workspace.store.list(kind, campaign_id)) for kind in ("task", "hypothesis", "trial", "study", "adaptive_race", "decision", "thread", "message")}
+        counts = {kind: workspace.store.count(kind, campaign_id) for kind in ("task", "hypothesis", "trial", "study", "adaptive_race", "decision", "thread", "message")}
         try:
             budget = workspace.resources.assessment(campaign_id)
         except (KeyError, ValueError):
             budget = None
         return {"campaign": campaign, "row": campaign_row(workspace, campaign), "tasks": tasks, "charter": charters[-1] if charters else None,
                 "budget": budget, "stage": campaign_stage(workspace, campaign), "counts": counts, "studies": workspace.store.list("study", campaign_id),
-                "trials": [public_trial(trial) for trial in workspace.store.list("trial", campaign_id)]}
+                # Rows, not records: the pages poll this on every event, and a run's designs are megabytes (/api/v1/experiments/{id} has them).
+                "trials": [public_trial(trial) for trial in workspace.store.list_trial_rows(campaign_id)]}
 
     @app.get("/api/v1/campaigns/{campaign_id}/charters")
     def charters(campaign_id: str):

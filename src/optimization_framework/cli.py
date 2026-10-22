@@ -92,7 +92,14 @@ class Session(AbstractContextManager):
                 "trials": summary["trials"], "studies": summary["studies"]}
 
     def trial(self, campaign_id, identity):
-        return next(row for row in self.state(campaign_id)["trials"] if row["id"] == identity)
+        """One run's whole record; state() lists runs without their designs."""
+        if self.workspace:
+            trial = self.workspace.store.get(identity, "trial")
+        else:
+            trial = self.request("GET", f"/api/v1/experiments/{quote(identity, safe='')}").json()["trial"]
+        if trial["campaign_id"] != campaign_id:
+            raise KeyError(f"{identity} is not an experiment of {campaign_id}")
+        return trial
 
     def submit(self, request):
         command = request if isinstance(request, Command) else Command.model_validate(request)

@@ -100,7 +100,7 @@ for historical grants and lightweight compatibility work.
 Use command_schema to inspect supported commands, then campaign_command with the exact current guidance revision
 and a stable request_key describing the intended operation. If a request timed out, inspect its receipt before retrying.
 Source-code availability is not effectiveness evidence.
-Speed is measured, not assumed. resource_inspect shows each task's runtime profile: evaluations per second at 1, 2, 4... workers,
+Speed is measured, not assumed. resource_inspect shows each task's runtime profile: evaluations per second at 1, 2, 4... workers on each device,
 device load, the platform's share of each step, storage and solver executions per evaluation, with flags for waste. Runs at or
 above the gate length are refused until the evaluator's current source has a profile on this host with every flag fixed or waived,
 except notes (note_flags, such as unsaturated: speed still rising at the worker ceiling), which hold nothing and need no waiver: go on
@@ -210,7 +210,8 @@ def planner_instructions(workspace):
         "You plan; you start and stop nothing. resources.estimate gives a kind never measured an expected use (host memory of one run's "
         "process tree, and GPU memory if it uses a GPU), with how you reached it; a measured run replaces it. resources.plan sets how many of "
         "this campaign's runs go at once, and of each kind, below the maximum. runtime.profile measures speed at 1, 2, 4... workers on an "
-        "idle workspace: more runs at once than its recommended workers adds memory but little speed.\n"
+        "idle workspace, for each device on its own: more runs at once than its recommended workers adds memory but little speed. "
+        + workspace.devices.guidance() + " Only a run on the GPU is held for GPU memory.\n"
         "resource_inspect shows the host, each GPU's memory and load, the largest processes, and under admission: the kinds with what "
         "they are expected to use and why, each running run's own memory now and at its peak, the GPU's processes, and why queued runs "
         "wait. GPU memory per run is reported only by runs whose array library counts it; otherwise infer it: under CUDA MPS this "
@@ -427,7 +428,8 @@ class PiTools:
                     "may change them on the Experiments page):\n- Name each run in the first line of its question: " + rules["naming"] +
                     "\n- Short runs are allotted less than " + f"{rules['short_run_seconds']:g}" + " seconds; long runs at least that."
                     "\n- Runs of this campaign at once: " + (f"at most {rules['max_concurrent']} (the scheduler holds the rest in the queue)" if rules["max_concurrent"]
-                        else "no limit of the campaign's own") + f"; the workspace runs at most {self.workspace.max_workers} in all."
+                        else "no limit of the campaign's own") + f"; the workspace runs at most {self.workspace.max_workers} in all. "
+                        + self.workspace.devices.guidance() +
                     "\n- How runs are chosen and ordered:\n" + rules["strategy"] +
                     "\n- How runs are presented on the Experiments page (" + ("chosen: " + (rules["presentation"].get("rationale") or "no reason given")
                         if rules.get("presentation_chosen") else "not chosen yet; a default drawn from the problem's description is shown") + "): list columns "

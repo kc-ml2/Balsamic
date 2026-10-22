@@ -96,6 +96,8 @@ def register(workspace):
     register_generate(workspace)
     from balsamic.notes.service import register as register_notes
     register_notes(workspace)
+    from balsamic.notes.skips import register as register_skips
+    register_skips(workspace)
     from balsamic.evolution.interventions import register as register_interventions
     register_interventions(workspace)
     from balsamic.library.service import register as register_library

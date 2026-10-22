@@ -54,3 +54,21 @@ test('a setup can be abandoned and started over; a created campaign can be remov
   expect((recorded.commands.find((c: any) => c.removal) as any).removal).toEqual({ keep: 'nothing' });
   await expect(page).toHaveURL(/#new/);
 });
+
+test('the setup is answered from the keyboard: Ctrl+Enter keeps the cursor in the composer, Ctrl+number picks a choice', async ({ page }) => {
+  const recorded = await mockWorkspace(page);
+  await page.goto('/#new');
+  const chat = page.getByTestId('setup-chat');
+  const composer = page.getByTestId('setup-composer');
+  await expect(composer).toBeFocused();
+  await composer.fill('Deflector v3');
+  await page.keyboard.press('Control+Enter');
+  await expect(chat).toContainText('What do you want to find out?');
+  await expect(composer).toBeFocused();
+  await expect(page.getByTestId('setup-choices').locator('[data-choice="later"]')).toHaveAttribute('data-shortcut', '1');
+  await page.keyboard.press('Control+1');
+  await expect(page.getByTestId('page-new')).toContainText('to be formulated with the lead');
+  await page.keyboard.press('Control+1');   // "Formulate it with the lead first"
+  await expect(chat).toContainText('That is everything');
+  expect(recorded.commands.map((c: any) => c.setup_answer)).toEqual([{ text: 'Deflector v3' }, { choice: 'later' }, { choice: 'formulate' }]);
+});

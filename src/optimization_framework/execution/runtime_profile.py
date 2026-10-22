@@ -2,7 +2,9 @@
 
 The platform cannot know how to make each problem's tools faster. For any problem it can
 measure how many evaluations per second the host delivers at 1, 2, 4... workers, how busy the
-device is meanwhile, and how much of the time and storage is the platform's own. A profile is a
+device is meanwhile, and how much of the time and storage is the platform's own. Each device
+the problem's runs may be placed on (execution/devices.py) is measured on its own: the GPU
+slots up to their number, then the CPU slots up to theirs, each level alone on the host. A profile is a
 few short ordinary trials of the built-in random search. Its flags name symptoms, not causes:
 they tell the researcher and the agents where to look, and a long run waits until each flag
 has been fixed or waived with a reason. A note is a flag about a setting that is the
@@ -45,6 +47,9 @@ def judged(summary):
     if summary["verdict"] == "inconclusive":
         return "inconclusive"
     return "failed" if any(blocks(flag) for flag in summary["flags"]) else "passed"
+
+
+NAMES = {"cuda": "GPU", "cpu": "CPU"}
 
 
 def rungs(ceiling):
@@ -91,18 +96,32 @@ def rung(workers, probes, samples=()):
             "overhead_share": max(0., 1 - sum(evaluation) / sum(worker)) if evaluation and sum(worker) > 0 else None,
             "solver_executions_per_evaluation": statistics.fmean(solves) if solves else None,
             "bytes_per_evaluation": sum(item["bytes"] for item in probes) / evaluations if evaluations else None,
-            "cpu_percent": mean("cpu_percent"), "gpu_percent": mean("gpu_percent"), "device_samples": len(during)}
+            "cpu_percent": mean("cpu_percent"), "cpu_core_percent": core_percent(mean("cpu_percent")),
+            "gpu_percent": mean("gpu_percent"), "device_samples": len(during)}
 
 
-def derive(levels, ceiling, candidate_bytes=None, thresholds=None):
-    """The recommendation and the flags a profile's measured levels support."""
+def core_percent(value):
+    """Host CPU load as a share of the physical cores: one busy thread per core is a fully used CPU, whatever its sibling does."""
+    if value is None:
+        return None
+    from optimization_framework.execution.devices import physical_cores
+    return min(100., value * (os.cpu_count() or 1) / physical_cores())
+
+
+def derive(levels, ceiling, candidate_bytes=None, thresholds=None, device=None):
+    """The recommendation and the flags one device's measured levels support; ceiling is its number of slots."""
     limits = {**THRESHOLDS, **(thresholds or {})}
     measured = [level for level in levels if level.get("status") == "measured"]
     if not measured or measured[0]["workers"] != 1 or len(measured) != len(levels):
         reasons = [level["reason"] for level in levels if level.get("reason")]
         return {"verdict": "inconclusive", "flags": [], "reason": reasons[0] if reasons else "No level was measured"}
     rate = lambda level: level["evaluations_per_second"]
-    busy = lambda level: max((value for value in (level.get("cpu_percent"), level.get("gpu_percent")) if value is not None), default=None)
+    if device == "cuda":
+        busy = lambda level: level.get("gpu_percent")
+    elif device == "cpu":
+        busy = lambda level: level.get("cpu_core_percent", level.get("cpu_percent"))
+    else:   # measured before runs were placed on a device
+        busy = lambda level: max((value for value in (level.get("cpu_percent"), level.get("gpu_percent")) if value is not None), default=None)
     idle = lambda level: busy(level) is None or busy(level) < limits["busy_percent"]
     describe = lambda level: "of unknown load" if busy(level) is None else f"{busy(level):.0f}% busy"
     one, best = measured[0], max(measured, key=rate)
@@ -134,6 +153,24 @@ def derive(levels, ceiling, candidate_bytes=None, thresholds=None):
     chosen = next(level for level in measured if level["workers"] == recommended)
     return {"verdict": "failed" if any(blocks(item) for item in flags) else "passed", "flags": flags, "recommended_workers": recommended,
             "evaluations_per_hour": 3600 * rate(chosen), "candidate_bytes": candidate_bytes}
+
+
+def combine(parts, candidate_bytes=None):
+    """One profile's summary from each device's: the GPU and CPU slots run side by side, so their speeds add."""
+    if list(parts) == [None]:
+        return parts[None]
+    verdicts = {part["verdict"] for part in parts.values()}
+    named = len(parts) > 1
+    summary = {"verdict": "inconclusive" if "inconclusive" in verdicts else "failed" if "failed" in verdicts else "passed",
+               "flags": [{**flag, "device": device, "message": f"{NAMES[device]}: {flag['message']}" if named else flag["message"]}
+                         for device, part in parts.items() for flag in part["flags"]],
+               "devices": parts}
+    if summary["verdict"] == "inconclusive":
+        device, part = next((device, part) for device, part in parts.items() if part["verdict"] == "inconclusive")
+        summary["reason"] = f"{NAMES[device]}: {part['reason']}" if named else part["reason"]
+        return summary
+    return {**summary, "recommended_workers": sum(part["recommended_workers"] for part in parts.values()),
+            "evaluations_per_hour": sum(part["evaluations_per_hour"] for part in parts.values()), "candidate_bytes": candidate_bytes}
 
 
 class DeviceSampler:
@@ -181,7 +218,8 @@ class RuntimeProfiles:
                 "evaluator_version_id": version_id,
                 "host": {"name": socket.gethostname(), "cpus": os.cpu_count(),
                          "gpus": sorted(device["vendor"] for device in get_observer(self.workspace)._gpu()["devices"])},
-                "resources": {"max_workers": self.workspace.max_workers, "settings": os.environ.get("GRATING_RESOURCE_SETTINGS", "")}}
+                "resources": {"max_workers": self.workspace.max_workers, "gpu_workers": self.workspace.gpu_workers,
+                              "settings": os.environ.get("GRATING_RESOURCE_SETTINGS", "")}}
         # One record per task that follows its current state: a requirement, profile or waiver bound to an
         # earlier state then reads as stale, and returning to that state makes it current again.
         value = {"id": "runtime_subject_" + content_hash([task["campaign_id"], task["id"]])[:32], **body}
@@ -222,8 +260,11 @@ class RuntimeProfiles:
         study_id = self.store.get(campaign_id, "campaign").get("active_study_id")
         if study_id:
             self.require(subject, study_id)   # so that the finished profile answers it and a waiver has something to name
+        sizes = self.workspace.devices.sizes()
+        pools = {device: sizes[device] for device in ("cuda", "cpu") if device in self.workspace.devices.reachable(task)}
         profile = {"id": identifier("runtime_profile"), "campaign_id": campaign_id, "task_id": task["id"],
                    "subject_id": subject["id"], "subject_digest": subject["digest"], "status": "running", "ceiling": self.workspace.max_workers,
+                   "pools": pools, "plan": [[device, workers] for device, slots in pools.items() for workers in rungs(slots)],
                    "parameters": request.model_dump(mode="json", exclude={"task_id"}), "levels": [], "created_at": now()}
         self._launch(profile)
         self.store.put("runtime_profile", profile, "runtime.profile_started")
@@ -243,16 +284,22 @@ class RuntimeProfiles:
             self.running = {row["id"] for row in self.store.list("runtime_profile") if row["status"] == "running"}
         return self.running
 
+    @staticmethod
+    def _plan(profile):
+        """(device, workers) of each level; a profile from before devices were placed measured the whole ceiling."""
+        return profile.get("plan") or [[None, workers] for workers in rungs(profile["ceiling"])]
+
     def _launch(self, profile):
         from optimization_framework.contracts.requests import TrialInput
-        workers = rungs(profile["ceiling"])[len(profile["levels"])]
+        device, workers = self._plan(profile)[len(profile["levels"])]
         parameters = profile["parameters"]
+        where = f" on {NAMES[device]}" if device else ""
         trials = [self.workspace.create_trial(TrialInput(campaign_id=profile["campaign_id"], task_id=profile["task_id"],
             algorithm="random", seed=1000 * len(profile["levels"]) + index, max_steps=parameters["max_evaluations"],
-            wall_seconds=parameters["probe_seconds"], priority=100,
-            question=f"Runtime profile probe: random search with {workers} concurrent worker(s), to measure evaluations per second.",
+            wall_seconds=parameters["probe_seconds"], priority=100, device=device,
+            question=f"Runtime profile probe: random search with {workers} concurrent worker(s){where}, to measure evaluations per second.",
             ), runtime_gate=False)["id"] for index in range(workers)]
-        profile["levels"].append({"workers": workers, "trial_ids": trials})
+        profile["levels"].append({"device": device, "workers": workers, "trial_ids": trials})
 
     def holds(self, trial):
         """Whether a queued experiment waits because a profile is measuring: only its probes may run meanwhile."""
@@ -281,7 +328,7 @@ class RuntimeProfiles:
                     raise ValueError(f"Probe {failed[0]['id']} failed: {failed[0].get('reason')}")
                 level.update(rung(level["workers"], [probe(self.workspace.job_dir(trial["id"]), profile["parameters"]["warmup_evaluations"])
                                                      for trial in trials], self._readings(identity)))
-                if len(profile["levels"]) < len(rungs(profile["ceiling"])):
+                if len(profile["levels"]) < len(self._plan(profile)):
                     self._launch(profile)
                     self.store.put("runtime_profile", profile, "runtime.profile_advanced")
                     continue
@@ -316,7 +363,11 @@ class RuntimeProfiles:
         first = self.workspace.job_dir(profile["levels"][0]["trial_ids"][0])
         study_id = self.store.get(profile["campaign_id"], "campaign").get("active_study_id")
         thresholds = self.store.get(study_id, "study").get("validation_policy", {}).get("runtime_thresholds") if study_id else None
-        summary = derive(profile["levels"], profile["ceiling"], probe(first)["candidate_bytes"], thresholds)
+        candidate_bytes = probe(first)["candidate_bytes"]
+        devices = list(dict.fromkeys(level.get("device") for level in profile["levels"]))
+        summary = combine({device: derive([level for level in profile["levels"] if level.get("device") == device],
+                                          (profile.get("pools") or {}).get(device, profile["ceiling"]), candidate_bytes, thresholds, device)
+                           for device in devices}, candidate_bytes)
         profile.update(status="completed", summary=summary, finished_at=now())
         self.store.put("runtime_profile", profile, "runtime.profile_completed")
         for requirement in self.store.list("validation_requirement", profile["campaign_id"]):

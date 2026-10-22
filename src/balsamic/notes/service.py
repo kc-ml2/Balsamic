@@ -123,7 +123,9 @@ def view(workspace, identity, *, revision=None):
             charter = {**(charter or {}), "charter": workspace.charters.view(note["charter_id"])}
         except KeyError:
             pass
-    return {"note": note, "revision": current, "revisions": revisions, "annotations": annotations_of(workspace, identity), "charter": charter, "sections": list(SECTIONS), "titles": TITLES}
+    from balsamic.notes import skips
+    return {"note": note, "revision": current, "revisions": revisions, "annotations": annotations_of(workspace, identity), "charter": charter, "sections": list(SECTIONS), "titles": TITLES,
+            "skips": skips.view(workspace, note)}
 
 
 # Annotations and tiers ------------------------------------------------------------------------------------
@@ -231,10 +233,17 @@ def attach_visual(workspace, annotation_id, artifact_id):
 
 
 # Adopt -------------------------------------------------------------------------------------------------------
-def markdown(revision):
+def held_skips(workspace, note):
+    from balsamic.notes.skips import held
+    return held(workspace, note)
+
+
+def markdown(revision, skipped=None):
     lines = ["# " + revision.get("title", "Problem note"), ""]
     for name, section in revision["sections"].items():
         if not (section.get("text") or section.get("items") or section.get("latex")):
+            if name in (skipped or {}):   # left unwritten by agreement: the formulator reads why
+                lines += ["## " + TITLES[name], "", "Skipped with the researcher's agreement: " + skipped[name]["reason"], ""]
             continue
         lines += ["## " + TITLES[name], ""]
         if section.get("text"):
@@ -261,7 +270,7 @@ def adopt(workspace, identity, revision_number, *, actor):
     if imports is None:
         raise ValueError("The formulator is not available in this workspace")
     from optimization_framework.problem_import.service import ImportCreate
-    record = imports.create(ImportCreate(title=revision["title"][:200], statement=markdown(revision), notes=f"Adopted from problem note {identity} revision {revision_number}"))
+    record = imports.create(ImportCreate(title=revision["title"][:200], statement=markdown(revision, held_skips(workspace, note)), notes=f"Adopted from problem note {identity} revision {revision_number}"))
     imports.start(record["id"])
     with workspace.lock:
         note = workspace.store.get(identity, "problem_note")

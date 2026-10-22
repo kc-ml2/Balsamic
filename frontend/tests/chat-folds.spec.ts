@@ -75,3 +75,27 @@ test('suggestions come from the housekeeper after the last reply; stale ones are
   await page.goto(`/#t/${THREAD_ID}/hypotheses`);
   await expect(page.getByTestId('suggestions')).toHaveCount(0);
 });
+
+test('Ctrl+number picks a suggestion and Ctrl+Enter sends with the cursor left in the composer', async ({ page }) => {
+  const live = { items: [{ label: 'Try the first candidate', text: 'Run the first candidate as a short screening run.' }, { label: 'Why two?', text: 'Why only two candidates?' }], as_of_message_id: 'message_2' };
+  const recorded = await mockWorkspace(page, { [`/api/v1/campaigns/${CAMPAIGN_ID}/threads`]: { ...f.threads, threads: [{ ...f.thread, suggestions: live }, f.branch] } });
+  await page.goto(`/#t/${THREAD_ID}/hypotheses`);
+  const composer = page.getByTestId('composer');
+  await expect(page.getByTestId('suggestions').locator('button')).toHaveCount(2);
+  await expect(page.getByTestId('thread-chat')).toContainText('Ctrl+1–2 picks a suggestion');
+  await composer.click();
+  await page.keyboard.press('Control+3');   // no third suggestion: nothing happens
+  await expect(composer).toHaveValue('');
+  await page.keyboard.press('Control+2');
+  await expect(composer).toHaveValue('Why only two candidates?');
+  await expect(composer).toBeFocused();
+  await page.keyboard.press('Control+Enter');
+  await expect.poll(() => recorded.commands.length).toBe(1);
+  expect((recorded.commands[0] as any).payload).toMatchObject({ message: 'Why only two candidates?' });
+  await expect(composer).toHaveValue('');
+  await expect(composer).toBeFocused();
+  await composer.fill('And the third?');
+  await page.getByTestId('send').click();   // a click on Send also returns the cursor to the composer
+  await expect.poll(() => recorded.commands.length).toBe(2);
+  await expect(composer).toBeFocused();
+});

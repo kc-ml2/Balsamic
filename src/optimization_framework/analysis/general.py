@@ -116,6 +116,9 @@ def report(workspace, campaign_id, *, study_id=None, cost_axis=None, cost_view="
         condition = {"study_id": trial.get("study_id"), "evaluation_identity": problem.evaluation_identity,
             "primary_objective": problem.primary_objective.model_dump(mode="json"),
             "confirmation_protocol_id": trial.get("confirmation_protocol_id")}
+        if cost_axis == "worker_seconds" and trial.get("device"):
+            # A worker-second on the GPU buys other evaluations than one on CPU: on time, each device is its own comparison.
+            condition["device"] = trial["device"]
         group_id = content_hash(condition)
         group = groups.setdefault(group_id, {"id": group_id, "condition": condition, "problem": problem.model_dump(mode="json"), "trials": []})
         latest = trial.get("result") or trial.get("progress") or {}
@@ -203,5 +206,7 @@ def report(workspace, campaign_id, *, study_id=None, cost_axis=None, cost_view="
             "cost_axis": cost_axis, "groups": list(groups.values()), "excluded": excluded,
             "actual_campaign_costs": costs.actual_costs(campaign_id,
                 axes=("worker_seconds", "evaluation_requests", "solver_executions", "implementation_seconds", "model_seconds", "model_calls", "model_input_tokens", "model_output_tokens", "api_usd")),
-            "interpretation": "Raw objectives on compatible instances and fidelities at observed costs; no extrapolation or cross-problem ranking.",
+            "interpretation": "Raw objectives on compatible instances and fidelities at observed costs; no extrapolation or cross-problem ranking."
+                + (" On worker-seconds, runs on the GPU and on CPU are compared separately (condition.device); compare on evaluation_requests "
+                   "to put them together." if len({group["condition"].get("device") for group in groups.values()} - {None}) > 1 else ""),
             "claim_level": "descriptive", "confirmation_protocol": (study or {}).get("confirmation") or None}

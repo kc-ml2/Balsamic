@@ -157,10 +157,21 @@ def test_runtime_gate_is_on_by_default_and_the_configuration_can_change_or_remov
     monkeypatch.setenv("GRATING_RUNTIME_GATE_SECONDS", "5")   # a variable left in the calling shell does not decide
     environment = launcher.service_environment(launcher.configuration(path))
     assert environment["GRATING_RUNTIME_GATE_SECONDS"] == "600"
-    assert json.loads(environment["GRATING_RESOURCE_SETTINGS"]) == {"workers": config["workers"], "cuda_mps": None, "meent_2d_source": None}
-    path.write_text(json.dumps({**config, "runtime_gate_seconds": 1800, "workers": 3}))
+    assert json.loads(environment["GRATING_RESOURCE_SETTINGS"]) == {"workers": config["workers"], "gpu_workers": 0, "cuda_mps": None}
+    monkeypatch.setenv("GRATING_DEVICE", "cuda")   # the scheduler sets each worker's device, not the calling shell
+    path.write_text(json.dumps({**config, "runtime_gate_seconds": 1800, "workers": 3, "gpu_workers": 1}))
     environment = launcher.service_environment(launcher.configuration(path))
     assert environment["GRATING_RUNTIME_GATE_SECONDS"] == "1800" and json.loads(environment["GRATING_RESOURCE_SETTINGS"])["workers"] == 3
+    assert "GRATING_DEVICE" not in environment and json.loads(environment["GRATING_RESOURCE_SETTINGS"])["gpu_workers"] == 1
+    for invalid in (-1, 1.5, True):
+        path.write_text(json.dumps({**config, "gpu_workers": invalid}))
+        with pytest.raises(launcher.LauncherError, match="gpu_workers"):
+            launcher.configuration(path)
+    # The settings that placed the 2D solver for the whole lab are gone: each run is placed.
+    for retired in ({"meent_2d_source": "runs/solvers/meent-private"}, {"meent_device": "cuda"}):
+        path.write_text(json.dumps({**config, **retired}))
+        with pytest.raises(launcher.LauncherError, match="gpu_workers"):
+            launcher.configuration(path)
     path.write_text(json.dumps({**config, "runtime_gate_seconds": None}))
     assert "GRATING_RUNTIME_GATE_SECONDS" not in launcher.service_environment(launcher.configuration(path))
     for invalid in (0, -1, "600", True):

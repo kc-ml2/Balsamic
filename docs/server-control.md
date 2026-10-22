@@ -90,10 +90,18 @@ These optional settings concern the 2D MEENT evaluator:
 
 | Setting | Effect |
 |---|---|
-| `meent_2d_source` | Path of a Torch-only MEENT checkout. The 2D evaluator then runs on CUDA instead of the installed package on CPU. |
+| `gpu_workers` | How many of the `workers` slots compute on the GPU, one run each (default `0`); the rest compute on CPU, where a run takes one slot per numerical thread. At least one slot stays on CPU. `scripts/start` sets one GPU slot when PyTorch sees a CUDA device. The former `meent_device` and `meent_2d_source` settings are refused. |
 | `cuda_mps` | `true` starts a CUDA Multi-Process Service daemon for this OS user and points the services, and therefore their workers, at it. |
 | `runtime_gate_seconds` | Runs at least this long wait for a [runtime profile](runtime-efficiency.md) of their evaluator. Default `600`; `null` sets no gate. |
-| `workers` | How many trials run at once. |
+| `workers` | How many trials run at once: the GPU slots and the CPU slots together. `scripts/start` uses one per physical core, less one kept for the system and the services. |
+
+The scheduler places each run when it starts and records the device on it: on the device the run names (`device` on a
+trial), on its race's or confirmation protocol's device once one of its runs has started, and otherwise on the GPU when
+its evaluator can use one and a GPU slot is free, else on CPU. Only the 2D MEENT evaluator can use the GPU; the 1D
+evaluator, commissioned evaluators, sandboxed runs and fixed-mask jobs compute on CPU. A CPU worker sees no CUDA device.
+The evaluator check before a run covers every device the task's runs may take. Worker-seconds on the GPU and on CPU buy
+different numbers of evaluations, so the comparison report keeps the devices apart on `worker_seconds` and pools them on
+`evaluation_requests`.
 
 Without MPS, concurrent GPU workers take turns and add no throughput. With it, an
 RTX 5090 at orders (10, 8) reached 4.9, 7.7, 9.4, 10.5 and 11.6 designs per second

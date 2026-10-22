@@ -12,13 +12,15 @@ import { Empty, Failed, Kv, Loading, Pill, Section, when } from '../primitives/u
 import { formatHash } from '../router/routes';
 import { track } from '../telemetry/events';
 import { useSelection } from '../stores/selection';
+import { SKIP_REQUEST } from '../chat/slash';
+import { SkipReason, SkipRow, type Skips } from './Skips';
 
 interface SectionData { text: string; items: string[]; latex: string[] }
 interface Revision { id: string; revision: number; sections: Record<string, SectionData>; glossary: { term: string; definition: string }[]; title: string; author: string; reason: string; created_at: string }
 interface Annotation { id: string; anchor: { revision: number; section: string; item_index?: number | null; start: number; end: number; quote: string }; kind: string; question: string; tier: string;
   escalated_from_tier?: string | null; escalation_reason?: string; answer: { text: string; answered_by: string; cost_usd?: number | null } | null; proposed_edit: Record<string, unknown> | null; visual_id?: string | null; status: string; created_at: string }
 interface NoteView { note: { id: string; title: string; current_revision: number; adopted_revision: number | null; charter_id: string | null; import_id: string | null; status: string }; revision: Revision | null;
-  revisions: { id: string; revision: number; author: string; reason: string; created_at: string }[]; annotations: Annotation[]; charter: { import_id?: string; status?: string; error?: string | null; charter_id?: string | null; reply?: string | null; model?: { provider?: string | null; model?: string | null; effort?: string | null } | null; tier?: string | null; usage?: { calls?: number; cost_usd?: number } | null; charter?: Record<string, unknown> } | null; sections: string[]; titles: Record<string, string> }
+  revisions: { id: string; revision: number; author: string; reason: string; created_at: string }[]; annotations: Annotation[]; charter: { import_id?: string; status?: string; error?: string | null; charter_id?: string | null; reply?: string | null; model?: { provider?: string | null; model?: string | null; effort?: string | null } | null; tier?: string | null; usage?: { calls?: number; cost_usd?: number } | null; charter?: Record<string, unknown> } | null; sections: string[]; titles: Record<string, string>; skips: Skips }
 
 const KINDS = [['define', 'Define'], ['explain', 'Explain'], ['challenge', 'Challenge'], ['visualize', 'Visualize']] as const;
 
@@ -34,6 +36,7 @@ export default function ProblemNotePage({ campaignId, route, threadId }: PagePro
   const [shownRevision, setShownRevision] = useState<number | null>(null);
   const [editing, setEditing] = useState<string | null>(null);   // the section whose editor is open
   const [folded, setFolded] = useState<Set<string>>(new Set());
+  const [asked, setAsked] = useState(false);   // the lead was asked which sections can be skipped
   const toggle = (name: string, open?: boolean) => setFolded(prev => { const next = new Set(prev); if (open ?? next.has(name)) next.delete(name); else next.add(name); return next; });
   const other = useRead<NoteView>(['note', campaignId, shownRevision], shownRevision ? `/api/v1/problem-notes/note_${campaignId}?revision=${shownRevision}` : null);
   useEffect(() => { setShownRevision(null); }, [campaignId]);
@@ -92,6 +95,21 @@ export default function ProblemNotePage({ campaignId, route, threadId }: PagePro
     try { await send({ operation: 'problem_note.adopt', campaignId, expectedRevision: version, payload: { note_id: data.note.id, revision: data.revision.revision }, origin: { thread_id: threadId } }); await refresh(); }
     catch (e) { setError(String((e as Error).message || e)); }
   };
+  // The lead makes the case for each skip in the conversation; nothing is skipped until you agree.
+  const askSkips = async () => {
+    if (version === undefined || !threadId) return;
+    setError(null);
+    try { await send({ operation: 'agent.message', campaignId, expectedRevision: version, payload: { message: SKIP_REQUEST, thread_id: threadId }, origin: { thread_id: threadId } }); setAsked(true); track('note.ask_skips', {}); }
+    catch (e) { setError(String((e as Error).message || e)); }
+  };
+  const unskip = async (section: string) => {
+    if (version === undefined) return;
+    setError(null);
+    try { await send({ operation: 'problem_note.unskip', campaignId, expectedRevision: version, payload: { note_id: data.note.id, section } }); await refresh(); }
+    catch (e) { setError(String((e as Error).message || e)); }
+  };
+  const skipped = (name: string) => { const s = data.skips?.skipped[name]; return !!s && !s.lapsed; };
+  const proposed = (name: string) => { for (const p of data.skips?.proposals || []) { const item = p.items.find(i => i.section === name && i.status === 'proposed'); if (item) return { proposal: p, item }; } return null; };
   const tabs = [['', 'Note'], ['charter', 'Charter'], ['revisions', 'Revisions']] as const;
   const open = data.annotations.filter(a => a.status !== 'rejected');
   return (
@@ -109,12 +127,17 @@ export default function ProblemNotePage({ campaignId, route, threadId }: PagePro
         {!revision ? <Empty>No note yet. Describe the problem to the lead in the conversation, or type /note.</Empty> : <>
         {(() => {
           const written = (name: string) => { const s = revision.sections[name]; return !!(s?.text?.trim() || s?.items?.length || s?.latex?.length); };
-          const missing = data.sections.filter(name => !written(name));
+          const missing = data.sections.filter(name => !written(name) && !skipped(name));
+          const settled = (name: string) => written(name) || skipped(name);
+          const state = (name: string) => written(name) ? 'written' : skipped(name) ? 'skipped' : proposed(name) ? 'proposed' : 'missing';
+          const waiting = missing.filter(name => proposed(name)).length;
           return <nav className="outline" data-testid="outline" aria-label="Sections">
-            {data.sections.map(name => <a key={name} href={`#section-${name}`} className={written(name) ? 'done' : 'missing'} data-testid="outline-item" data-state={written(name) ? 'written' : 'missing'}
-              title={written(name) ? 'Written' : 'Not written yet: the problem is not defined until it is'} onClick={e => { e.preventDefault(); toggle(name, true); document.getElementById(`section-${name}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
+            {data.sections.map(name => <a key={name} href={`#section-${name}`} className={settled(name) ? 'done' : 'missing'} data-testid="outline-item" data-state={state(name)}
+              title={{ written: 'Written', skipped: 'Left unwritten with your agreement', proposed: 'The lead proposes leaving it unwritten; agree or decline in the section', missing: 'Not written yet: the problem is not defined until it is written or skipped with your agreement' }[state(name)]} onClick={e => { e.preventDefault(); toggle(name, true); document.getElementById(`section-${name}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}>
               {data.titles[name]}{open.some(a => a.anchor.section === name) ? <span className="faint">· {open.filter(a => a.anchor.section === name).length}</span> : null}</a>)}
-            <span className="small faint grow">{missing.length ? `${missing.length} of ${data.sections.length} still to write` : 'every section is written'}</span>
+            <span className="small faint grow">{missing.length ? `${missing.length} of ${data.sections.length} still to write` + (waiting ? `, ${waiting} with a skip proposed` : '') : Object.keys(data.skips?.skipped || {}).some(skipped) ? 'every section is written or skipped' : 'every section is written'}</span>
+            {missing.length > waiting && data.note.status !== 'confirmed' && !shownRevision ? <button className="btn small" onClick={askSkips} disabled={asked || !threadId} data-testid="ask-skips"
+              title="The lead says which empty sections the confirmed charter already states or that do not apply here, with its reasons, and asks you about the rest; you agree to each skip">{asked ? 'Asked the lead (see the chat)' : 'Ask which can be skipped'}</button> : null}
             <button className="btn quiet small" onClick={() => setFolded(new Set(data.sections.filter(written)))} title="Fold the written sections to see what is left">Fold written</button>
             <button className="btn quiet small" onClick={() => setFolded(new Set())}>Expand all</button>
           </nav>;
@@ -123,16 +146,27 @@ export default function ProblemNotePage({ campaignId, route, threadId }: PagePro
           const section = revision.sections[name];
           const anns = open.filter(a => a.anchor.section === name);
           const empty = !(section?.text?.trim() || section?.items?.length || section?.latex?.length);
+          const skip = empty ? data.skips?.skipped[name] : undefined;
+          const offer = empty && (!skip || skip.lapsed) ? proposed(name) : null;
           const editable = data.note.status !== 'confirmed' && !shownRevision;
           const isFolded = folded.has(name) && editing !== name;
           return (
             <section key={name} id={`section-${name}`} className={'card' + (empty ? ' unwritten' : '') + (isFolded ? ' folded' : '')} data-testid={`section-${name}`} data-empty={empty ? '1' : undefined} data-folded={isFolded ? '1' : undefined} onMouseUp={e => capture(name, e)}>
               <div className="section-head"><button className="fold-toggle" onClick={() => toggle(name)} aria-label={isFolded ? 'Expand' : 'Fold'} data-testid="section-fold">{isFolded ? '▸' : '▾'}</button><h2>{data.titles[name]}</h2>
-                {empty ? <Pill tone="warn" title="The gate needs every section written before proposals, allocations or autopilot">not written</Pill> : null}{anns.length ? <Pill>{anns.length} notes</Pill> : null}
+                {skip && !skip.lapsed ? <Pill tone="clear" title="Left unwritten with your agreement; the gate counts it as settled">skipped</Pill>
+                  : offer ? <Pill tone="agent" title="The lead proposes leaving this section unwritten">skip proposed</Pill>
+                  : skip?.lapsed ? <Pill tone="warn" title={'The skip no longer holds: ' + skip.lapsed}>skip lapsed</Pill>
+                  : empty ? <Pill tone="warn" title="The gate needs every section written, or skipped with your agreement, before proposals, allocations or autopilot">not written</Pill> : null}{anns.length ? <Pill>{anns.length} notes</Pill> : null}
                 {editable && editing !== name ? <><button className="btn small" data-testid="section-ask" title="Ask about this section: define a term, have it explained, challenge it, or ask the lead to draw it. Select words in the text to ask about those exactly." onClick={() => askAbout(name, section)}>Ask about this</button>
                   <button className="btn small" data-testid="section-edit" title="Change this section yourself; the change is saved as a revision in your name" onClick={() => { setMenu(null); toggle(name, true); setEditing(name); }}>Edit</button></> : null}</div>
               {isFolded ? null : editing === name ? <SectionEditor section={section} onSave={value => revise(name, value)} onCancel={() => setEditing(null)} /> : <>
-              {section?.text ? <Markdown text={section.text} thread={route.thread} /> : empty ? <p className="faint small">Not written yet. Ask the lead to write it, or write it with Edit; the problem is not defined until every section is.</p> : null}
+              {section?.text ? <Markdown text={section.text} thread={route.thread} />
+                : offer ? <SkipRow proposal={offer.proposal} item={offer.item} campaignId={campaignId} />
+                : skip ? <div className="skip-row" data-testid="skipped" data-lapsed={skip.lapsed ? '1' : undefined}>
+                    {skip.lapsed ? <p className="small">This skip no longer holds: {skip.lapsed}. Write the section, or ask the lead again.</p> : <p className="small faint">Left unwritten with your agreement.</p>}
+                    <SkipReason item={skip} />
+                    {!skip.lapsed && editable ? <div className="row"><button className="btn small" onClick={() => unskip(name)} data-testid="unskip" title="Take the skip back: the section is to be written before the gate opens">Write it instead</button></div> : null}</div>
+                : empty ? <p className="faint small">Not written yet. Ask the lead to write it, or write it with Edit. If the charter already says it or it does not apply here, ask which sections can be skipped.</p> : null}
               {section?.items?.length ? <ul>{section.items.map((item, i) => <li key={i}><Markdown text={item} thread={route.thread} className="md inline" /></li>)}</ul> : null}
               {section?.latex?.map((formula, i) => <Markdown key={i} text={'$$' + formula + '$$'} thread={route.thread} />)}</>}
               {menu?.section === name ? <div className="card" data-testid="annotation-menu"><div className="row wrap"><span className="small faint">“{menu.quote.slice(0, 80)}”</span>

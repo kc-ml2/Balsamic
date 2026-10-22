@@ -8,6 +8,8 @@ export function Rows({ monitor }: { monitor: Monitor }) {
   const llm = budget.llm as Record<string, unknown>;
   const autopilot = (monitor.rows as unknown as { autopilot?: Record<string, unknown> }).autopilot;
   const gpuRow = compute.gpu as Record<string, unknown> | undefined;
+  const pools = compute.pools as Record<string, { slots: number; taken: number }> | undefined;
+  const slots = pools && pools.cuda?.slots ? `GPU ${pools.cuda.taken} of ${pools.cuda.slots} · CPU ${pools.cpu.taken} of ${pools.cpu.slots}` : null;
   const waiting = Number(needs_you.decisions) + Number(needs_you.issues) + Number(needs_you.questions);
   return (
     <div className="col" data-testid="monitor-rows">
@@ -35,7 +37,7 @@ export function Rows({ monitor }: { monitor: Monitor }) {
           <div className="col" style={{ gap: 4 }}><span className="small faint">Workers</span><Slots busy={Number(compute.busy)} limit={Number(compute.limit)} queued={Number(compute.queued ?? 0)} /></div>
           {gpuRow?.measured ? <div className="row" style={{ gap: 8 }}><Ring percent={Number(gpuRow.utilization_percent)} size={56} label="GPU utilization" tone={gpuRow.busy ? 'accent' : 'info'} /><Ring percent={Number(gpuRow.memory_used_bytes) / Number(gpuRow.memory_total_bytes) * 100} size={56} label="GPU memory" tone="info" text={`${(Number(gpuRow.memory_used_bytes) / 2 ** 30).toFixed(0)}G`} /></div> : null}
         </div>
-        <Kv rows={[['Runs now', `${compute.busy} of ${compute.limit} workers`], ['Queued', compute.queued != null ? String(compute.queued) : <span className="faint">admission not reported</span>], ['Level', compute.level ? String(compute.level) : <span className="faint">unknown</span>],
+        <Kv rows={[['Runs now', `${compute.busy} of ${compute.limit} workers`], ...(slots ? [['Slots taken', slots] as [string, string]] : []), ['Queued', compute.queued != null ? String(compute.queued) : <span className="faint">admission not reported</span>], ['Level', compute.level ? String(compute.level) : <span className="faint">unknown</span>],
           ['GPU', gpu(gpuRow)]]} />
       </div>
       <div className="card"><h3>Agents</h3><div className="row"><Pill tone={agents.active ? 'agent' : ''}>{String(agents.status)}</Pill><span className="small">{String(agents.headline || '')}</span></div></div>

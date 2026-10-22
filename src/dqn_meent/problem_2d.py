@@ -1,10 +1,7 @@
 """Installed MEENT evaluator for the FLRL two-dimensional beam deflector."""
 from __future__ import annotations
 
-import importlib.util
 import math
-import os
-import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -203,6 +200,8 @@ def flrl_charter():
 
 
 class Meent2DProblem:
+    devices = ("cpu", "cuda")   # the scheduler places each run on one; see optimization_framework/execution/devices.py
+
     def examples(self):
         """The Octavian FLRL paper's reported condition, as a New campaign starting point."""
         return [{
@@ -426,37 +425,25 @@ class Meent2DProblem:
 
 
 def _solver():
-    """The installed MEENT on CPU, or the Torch-only checkout named by GRATING_MEENT_2D_SOURCE on CUDA.
+    """The lab's MEENT (the meent-private fork) on the device the scheduler placed this run on (GRATING_DEVICE), cpu by default.
 
-    Both report version 0.13.2 and agree to about 1e-11 in every diffraction efficiency, so
-    each evaluation records which one produced it. The checkout loads under its own module
-    name, leaving the installed package to the NumPy 1D solver.
+    CPU and CUDA agree to about 1e-11 in every diffraction efficiency, so each evaluation records
+    the build and the device that produced it.
     """
-    import torch
+    from dqn_meent.rcwa import device, load, source
 
-    source = os.environ.get("GRATING_MEENT_2D_SOURCE")
-    if not source:
-        import meent
-        return meent, {"backend": 2, "device": 0}, {}
-    if not torch.cuda.is_available():
-        raise ValueError("GRATING_MEENT_2D_SOURCE selects the CUDA solver, but no CUDA device is available")
-    from optimization_framework.execution.source import checkout_identity
-    package = Path(source).expanduser().resolve() / "meent"
-    if "meent_2d_source" not in sys.modules:
-        spec = importlib.util.spec_from_file_location("meent_2d_source", package / "__init__.py",
-                                                      submodule_search_locations=[str(package)])
-        module = importlib.util.module_from_spec(spec)
-        sys.modules["meent_2d_source"] = module
-        spec.loader.exec_module(module)
-    # Its call_mee is Torch-only and has no backend argument.
-    return sys.modules["meent_2d_source"], {"device": 1}, {"source": checkout_identity(source), "device": "cuda"}
+    meent, torch = load()
+    where = device()
+    if where == "cuda" and not torch.cuda.is_available():
+        raise ValueError("This run is placed on the GPU (GRATING_DEVICE is cuda), but PyTorch sees no CUDA device in this lab")
+    return meent, {"device": where}, {"source": source(), "device": where}
 
 
 class Meent2DEvaluator:
     def __init__(self, instance: ProblemInstance):
+        meent, selection, self.provenance = _solver()   # says what to install when PyTorch or the fork is missing
         import torch
 
-        meent, selection, self.provenance = _solver()
         if meent.__version__ != "0.13.2":
             raise ValueError("This evaluator requires MEENT 0.13.2")
         self.instance = instance

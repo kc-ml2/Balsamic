@@ -22,7 +22,8 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=9,<10", "jsonschema>=4.19,<5"]
-meent = ["meent==0.13.2", "scipy==1.18.1", "matplotlib>=3.10,<4", "tqdm>=4.70,<5"]
+# MEENT is the meent-private fork (feature/cuda-acceleration): Torch-only, on CPU or CUDA.
+meent = ["meent==0.13.2", "torch==2.14.0", "scipy==1.18.1", "matplotlib>=3.10,<4", "tqdm>=4.70,<5"]
 learners = ["torch==2.14.0", "gymnasium==1.3.0"]
 masks = ["mask-optimizers==0.1.0"]
 
@@ -43,6 +44,7 @@ bounded_continuous = "optimization_benchmarks.problems:ContinuousProblem"
 mask_optimizers = "dqn_meent.mask_library_adapter:MaskLibraryPlugin"
 
 [tool.uv.sources]
+meent = { git = "https://github.com/HoseungChoi51/meent-private", branch = "feature/cuda-acceleration" }
 mask-optimizers = { git = "https://github.com/kc-ml2/mask-optimizers", tag = "v0.1.0" }
 
 [tool.hatch.build.targets.wheel]

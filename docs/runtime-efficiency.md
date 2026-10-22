@@ -11,9 +11,12 @@ optimization.
 
 `runtime.profile {task_id}` measures a task's evaluator on this host. It needs an idle
 workspace and takes a few minutes. It runs short ordinary trials of the built-in random search
-(30 s each by default) at 1, 2, 4… concurrent workers up to the launcher's `workers` ceiling;
-while it measures, the scheduler starts nothing but its probes. Their cost is charged to the
-campaign like any trial.
+(30 s each by default) at 1, 2, 4… concurrent workers, for each device the task's runs may be
+placed on: the GPU slots up to `gpu_workers`, then the CPU slots up to the rest of `workers`
+([server control](server-control.md#gpu-solver-and-concurrent-trials)). While it measures, the
+scheduler starts nothing but its probes. Their cost is charged to the campaign like any trial.
+Each device is judged on its own load (a CPU level by its share of the physical cores) and gets
+its own recommendation; the summary adds the two devices' speeds, since they run side by side.
 
 For each level it records evaluations per second (over the time all workers of the level were
 evaluating), CPU and GPU load, the platform's share of each step, bytes stored per evaluation
@@ -45,7 +48,7 @@ NVIDIA devices; where neither is available it is reported as unknown.
 ## The gate
 
 A profile answers for one state of its subject: the task's problem, the scientific source, the
-host, and the launcher's resource settings (`workers`, `cuda_mps`, `meent_2d_source`). The
+host, and the launcher's resource settings (`workers`, `gpu_workers`, `cuda_mps`). The
 scientific source is the digest every experiment records (the source files a worker loads for
 the problem), so a change elsewhere in the platform leaves a profile valid, and it is the digest
 an equivalence record names. When any of them changes, the profile, the requirement and its

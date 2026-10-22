@@ -12,7 +12,7 @@ export function NextStep({ step, threadId, page }: { step: Step | null | undefin
         <strong>{step.blocking ? `${step.proposals} proposal${step.proposals === 1 ? '' : 's'} wait for this: ${step.title.toLowerCase()}` : `Next: ${step.title.toLowerCase()}`}</strong>
         <div className="small">{step.text}</div>
       </div>
-      {!here ? <a className="btn small primary" href={withThread(step.page, threadId)} data-testid="next-step-open">{step.title}</a> : null}
+      {!here && step.page ? <a className="btn small primary" href={withThread(step.page, threadId)} data-testid="next-step-open">{step.title}</a> : null}
     </div>
   );
 }

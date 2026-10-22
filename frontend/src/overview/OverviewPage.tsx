@@ -1,4 +1,5 @@
 /** The campaign at a glance: what it is for, where it stands, what it has, and the one place to remove it. */
+import type { ReactNode } from 'react';
 import type { PageProps } from '../shell/StagePanel';
 import { useMonitor, useSummary, useThreads, useCampaigns } from '../api/queries';
 import { Empty, Failed, Kv, Loading, Pill, Section, duration, num, when } from '../primitives/ui';
@@ -46,7 +47,8 @@ export default function OverviewPage({ campaignId, route }: PageProps) {
       </Section>
       <Section title="Team and autopilot">
         <Kv rows={[['Agents', rows ? <><Pill tone={rows.agents.active ? 'agent' : ''}>{String(rows.agents.status)}</Pill> <span className="small">{String(rows.agents.headline || '')}</span></> : <Loading />],
-          ['Problem definition', row?.next_step ? <><Pill tone="warn">gate closed</Pill> <span className="small">{row.next_step.title}{row.next_step.missing?.length ? `: ${row.next_step.missing.join(', ')} not written` : ''}</span></> : <Pill tone="good">defined</Pill>],
+          ['Problem definition', row?.next_step && row.next_step.kind !== 'evaluator' ? <><Pill tone="warn">gate closed</Pill> <span className="small">{row.next_step.title}{row.next_step.missing?.length ? `: ${row.next_step.missing.join(', ')} not written` : ''}</span></> : <Pill tone="good">defined</Pill>],
+          ...(row?.next_step?.kind === 'evaluator' ? [['Evaluator', <><Pill tone="bad">cannot start</Pill> <span className="small" data-testid="evaluator-blocked">{row.next_step.error}</span></>] as [string, ReactNode]] : []),
           ['Autopilot', autopilot?.enabled ? `on · ${String(autopilot.reason)}` : row?.autopilot?.requested ? 'chosen at setup; waits for the problem definition' : 'off: the lead acts on your requests'],
           ['Threads', threads.data ? threads.data.threads.filter(t => t.kind !== 'agents').map(t => <a key={t.id} href={formatHash({ page: 'overview' }, t.id)} style={{ marginRight: 8 }}>{t.title}</a>) : <Loading />]]} />
       </Section>

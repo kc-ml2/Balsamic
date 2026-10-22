@@ -17,9 +17,9 @@ from starlette.middleware.gzip import GZipMiddleware
 from balsamic.workspace import build_workspace
 
 
-def create_app(directory=None, max_workers=2, start_workers=True, implementation_client=None, frontend_directory=None):
+def create_app(directory=None, max_workers=2, start_workers=True, implementation_client=None, frontend_directory=None, gpu_workers=0):
     workspace = build_workspace(directory or os.environ.get("GRATING_WORKSPACE", "runs/workspace"), max_workers=max_workers,
-                                implementation_client=implementation_client)
+                                implementation_client=implementation_client, gpu_workers=gpu_workers)
     from optimization_framework.analysis.tensorboard_view import ScalarExporter, tensorboard_app
     scalar_exporter = ScalarExporter(workspace)
     workspace_id = workspace.store.identity()
@@ -36,7 +36,8 @@ def create_app(directory=None, max_workers=2, start_workers=True, implementation
             workspace.close()
 
     app = FastAPI(title="Balsamic", version="0.3.0", lifespan=lifespan)
-    app.add_middleware(GZipMiddleware, minimum_size=1024)
+    # zlib's own default level: level 9, Starlette's default, spends 35x longer on a design-heavy response for 12% less.
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=6)
     app.state.workspace = workspace
     app.state.scalar_exporter = scalar_exporter
     app.mount("/tensorboard", tensorboard_app(scalar_exporter.directory), name="tensorboard")
@@ -97,10 +98,11 @@ def main(argv=None):
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--workers", type=int, default=2, help="Maximum concurrent numerical trials")
+    parser.add_argument("--gpu-workers", type=int, default=0, help="How many of the workers compute on the GPU; the rest compute on CPU")
     parser.add_argument("--frontend-directory", default=None, help="A built frontend (frontend/dist by default)")
     args = parser.parse_args(argv)
     import uvicorn
-    uvicorn.run(create_app(args.directory, max_workers=args.workers, frontend_directory=args.frontend_directory),
+    uvicorn.run(create_app(args.directory, max_workers=args.workers, frontend_directory=args.frontend_directory, gpu_workers=args.gpu_workers),
                 host=args.host, port=args.port, timeout_graceful_shutdown=3)
 
 

@@ -5,6 +5,7 @@ import { formatHash, withThread } from '../router/routes';
 import { useRead } from '../api/queries';
 import type { Panel } from '../api/types';
 import { PanelView } from '../panels/PanelView';
+import { SkipCard } from '../note/Skips';
 
 const ORIGIN_LABEL: Record<string, string> = { researcher: 'You', lead: 'Lead', page_agent: 'Agent', autopilot: 'Autopilot', lab_event: 'Lab', manager_system: 'Lab', pi: 'Lead', setup: 'Setup' };
 
@@ -14,6 +15,7 @@ export function Turn({ message, thread, aliases, onFork, onEdit }: { message: Me
   const role = message.agent_role && message.agent_role !== 'lead' ? message.agent_role.replaceAll('_', ' ') : null;
   const who = user ? 'You' : role || ORIGIN_LABEL[String(message.origin)] || (message.role === 'assistant' ? 'Lead' : message.role);
   if (message.kind === 'panel_link' && message.panel_id) return <PanelCard message={message} thread={thread} />;
+  if (message.kind === 'note_skip' && message.skip_id) return <SkipCard campaignId={message.campaign_id} skipId={message.skip_id} thread={thread} />;
   if (message.kind === 'agents_link' && message.link_thread_id) {
     return (
       <article className="turn lab agents-link" data-message-id={message.id} data-testid="agents-link">

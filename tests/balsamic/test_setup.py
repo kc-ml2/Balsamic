@@ -107,3 +107,23 @@ def test_a_setup_is_abandoned_by_a_word_a_choice_or_the_button_and_never_created
     answer(text="Right one"); answer(choice="later"); answer(choice="formulate"); answer(choice="small"); answer(choice="manual"); s = answer(choice="off")
     assert any(c["id"] == "restart" for c in s["step"]["choices"])
     assert answer(choice="restart")["status"] == "abandoned"
+
+
+def test_every_offered_problem_creates_its_campaign_on_a_runnable_task(client, workspace):
+    """The 2D deflector declares every configuration field, so the setup starts it on its published example, not on defaults."""
+    sid = client.post("/api/v1/setup").json()["id"]
+    answer = lambda setup_id, **body: client.post(f"/api/v1/setup/{setup_id}/answer", json=body).json()
+    answer(sid, text="Probe")
+    offered = [c["id"] for c in answer(sid, choice="later")["step"]["choices"] if c["id"] != "formulate"]
+    assert "meent_2d_dual_polarization_deflector" in offered
+    client.post(f"/api/v1/setup/{sid}/abandon")
+    for problem_id in offered:
+        sid = client.post("/api/v1/setup").json()["id"]
+        answer(sid, text=f"On {problem_id}"); answer(sid, choice="later"); answer(sid, choice=problem_id)
+        answer(sid, choice="small"); answer(sid, choice="manual"); answer(sid, choice="off")
+        response = client.post(f"/api/v1/setup/{sid}/create")
+        assert response.status_code == 200, (problem_id, response.text)
+        tasks = workspace.store.list("task", response.json()["campaign_id"])
+        assert [t["problem"]["definition_id"] for t in tasks] == [problem_id]
+    flrl = workspace.store.list("task", "on-meent-2d-dual-polarization-deflector")[0]
+    assert flrl["problem"]["configuration"]["grid_x"] == 256 and flrl["problem"]["fidelity"] == {"rcwa_order_x": 10, "rcwa_order_y": 5}
